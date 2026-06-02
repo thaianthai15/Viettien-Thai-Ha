@@ -6,6 +6,7 @@ import {
   Paper,
   Typography,
 } from "@mui/material";
+import { Link } from "react-router-dom";
 
 import { getMe } from "../features/auth/authApi";
 import type { UserMe } from "../features/auth/authApi";
@@ -62,6 +63,12 @@ export default function HomePage() {
               <Typography>
                 Đại lý: <strong>{user.agency_name || "Chưa cập nhật"}</strong>
               </Typography>
+
+              <Box marginTop={3} display="flex" gap={2}>
+                <Button component={Link} to="/products" variant="contained">
+                  Quản lý sản phẩm
+                </Button>
+              </Box>
             </>
           ) : (
             <Typography>Đang tải thông tin người dùng...</Typography>
