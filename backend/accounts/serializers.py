@@ -1,5 +1,5 @@
-from django.contrib.auth.models import User
 from rest_framework import serializers
+from .models import User
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -14,9 +14,14 @@ class RegisterSerializer(serializers.ModelSerializer):
             "email",
             "first_name",
             "last_name",
+            "phone",
+            "agency_name",
+            "agency_address",
+            "role",
             "password",
             "password_confirm",
         ]
+        read_only_fields = ["id", "role"]
 
     def validate(self, attrs):
         if attrs["password"] != attrs["password_confirm"]:
@@ -32,11 +37,9 @@ class RegisterSerializer(serializers.ModelSerializer):
         password = validated_data.pop("password")
 
         user = User.objects.create_user(
-            username=validated_data.get("username"),
-            email=validated_data.get("email", ""),
-            first_name=validated_data.get("first_name", ""),
-            last_name=validated_data.get("last_name", ""),
             password=password,
+            role=User.Role.OWNER,
+            **validated_data,
         )
 
         return user
@@ -51,6 +54,10 @@ class UserMeSerializer(serializers.ModelSerializer):
             "email",
             "first_name",
             "last_name",
+            "phone",
+            "agency_name",
+            "agency_address",
+            "role",
             "is_staff",
             "is_superuser",
         ]

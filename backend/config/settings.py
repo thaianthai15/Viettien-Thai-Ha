@@ -149,3 +149,4 @@ REST_FRAMEWORK = {
 }
 
 CORS_ALLOWED_ORIGINS = os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+AUTH_USER_MODEL = "accounts.User"
