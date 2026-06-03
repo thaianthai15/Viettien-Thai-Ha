@@ -1,33 +1,60 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import Box from "@mui/material/Box";
+import Typography from "@mui/material/Typography";
 import {
-  Box,
   Button,
   Chip,
   CircularProgress,
   Container,
+  FormControl,
+  InputLabel,
+  MenuItem,
   Paper,
+  Select,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableRow,
-  Typography,
+  TextField,
 } from "@mui/material";
 
-import { getProducts, type Product } from "../features/inventory/inventoryApi";
+import {
+  getCategories,
+  getProducts,
+  type Category,
+  type Product,
+} from "../features/inventory/inventoryApi";
 
 export default function ProductListPage() {
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [filters, setFilters] = useState({
+    search: "",
+    category: "",
+    size: "",
+    color: "",
+  });
+
+  const fetchCategories = async () => {
+    try {
+      const data = await getCategories();
+      setCategories(data);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const fetchProducts = async () => {
+  const fetchProducts = async (customFilters = filters) => {
     try {
       setIsLoading(true);
       setErrorMessage("");
 
-      const data = await getProducts();
+      const data = await getProducts(customFilters);
       setProducts(data);
     } catch (error) {
       console.error(error);
@@ -38,8 +65,35 @@ export default function ProductListPage() {
   };
 
   useEffect(() => {
+    fetchCategories();
+  }, []);
+
+  useEffect(() => {
     fetchProducts();
   }, []);
+
+  const handleFilterChange = (field: string, value: string) => {
+    setFilters((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleSearch = () => {
+    fetchProducts(filters);
+  };
+
+  const handleResetFilter = () => {
+    const emptyFilters = {
+      search: "",
+      category: "",
+      size: "",
+      color: "",
+    };
+
+    setFilters(emptyFilters);
+    fetchProducts(emptyFilters);
+  };
 
   return (
     <Container maxWidth="lg">
@@ -87,7 +141,7 @@ export default function ProductListPage() {
                 {products.map((product) => {
                   const totalStock = product.variants.reduce(
                     (sum, variant) => sum + variant.current_stock,
-                    0
+                    0,
                   );
 
                   return (
@@ -120,7 +174,11 @@ export default function ProductListPage() {
                         {product.is_active ? (
                           <Chip label="Đang bán" color="success" size="small" />
                         ) : (
-                          <Chip label="Ngừng bán" color="default" size="small" />
+                          <Chip
+                            label="Ngừng bán"
+                            color="default"
+                            size="small"
+                          />
                         )}
                       </TableCell>
                     </TableRow>
@@ -137,6 +195,66 @@ export default function ProductListPage() {
               </TableBody>
             </Table>
           )}
+        </Box>
+
+        <Box
+          marginTop={3}
+          display="grid"
+          gridTemplateColumns="2fr 1fr 1fr 1fr auto auto"
+          gap={2}
+        >
+          <TextField
+            label="Tìm mã hàng / tên hàng"
+            value={filters.search}
+            onChange={(event) =>
+              handleFilterChange("search", event.target.value)
+            }
+            fullWidth
+          />
+
+          <FormControl fullWidth>
+            <InputLabel>Danh mục</InputLabel>
+            <Select
+              label="Danh mục"
+              value={filters.category}
+              onChange={(event) =>
+                handleFilterChange("category", event.target.value)
+              }
+            >
+              <MenuItem value="">Tất cả</MenuItem>
+              {categories.map((category) => (
+                <MenuItem key={category.id} value={String(category.id)}>
+                  {category.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          <TextField
+            label="Size"
+            placeholder="M, L, XL"
+            value={filters.size}
+            onChange={(event) => handleFilterChange("size", event.target.value)}
+            fullWidth
+          />
+
+          <TextField
+            label="Màu"
+            placeholder="Trắng, Đen..."
+            value={filters.color}
+            onChange={(event) =>
+              handleFilterChange("color", event.target.value)
+            }
+            fullWidth
+          />
+
+          <Button variant="contained" onClick={handleSearch}>
+            Lọc
+          </Button>
+
+          <Button variant="outlined" onClick={handleResetFilter}>
+            Reset
+          </Button>
         </Box>
       </Paper>
     </Container>

@@ -2,7 +2,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters, permissions, viewsets
 
 from .filters import ProductFilter, ProductVariantFilter
-from .models import Category, Product, ProductVariant, Supplier, ImportReceipt, StockTransaction
+from .models import Category, Product, ProductVariant, Supplier, ImportReceipt, StockTransaction, Customer, SaleInvoice
 from .serializers import (
     CategorySerializer,
     ProductSerializer,
@@ -11,6 +11,9 @@ from .serializers import (
     ImportReceiptSerializer,
     ImportReceiptCreateSerializer,
     StockTransactionSerializer,
+    CustomerSerializer,
+    SaleInvoiceSerializer,
+    SaleInvoiceCreateSerializer,
 )
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -123,3 +126,43 @@ class StockTransactionViewSet(viewsets.ReadOnlyModelViewSet):
         "note",
     ]
     ordering_fields = ["id", "created_at", "transaction_type"]
+
+class CustomerViewSet(viewsets.ModelViewSet):
+    queryset = Customer.objects.all().order_by("-created_at")
+    serializer_class = CustomerSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["name", "phone", "email", "address"]
+    ordering_fields = ["id", "name", "created_at"]
+
+
+class SaleInvoiceViewSet(viewsets.ModelViewSet):
+    queryset = (
+        SaleInvoice.objects
+        .select_related("customer", "created_by")
+        .prefetch_related(
+            "items",
+            "items__product_variant",
+            "items__product_variant__product",
+        )
+        .all()
+    )
+    permission_classes = [permissions.IsAuthenticated]
+
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["invoice_code", "customer__name", "customer__phone", "note"]
+    ordering_fields = [
+        "id",
+        "invoice_code",
+        "sale_date",
+        "total_amount",
+        "final_amount",
+        "created_at",
+    ]
+
+    def get_serializer_class(self):
+        if self.action == "create":
+            return SaleInvoiceCreateSerializer
+
+        return SaleInvoiceSerializer

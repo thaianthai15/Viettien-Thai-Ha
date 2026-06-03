@@ -119,16 +119,16 @@ export default function ProductFormPage() {
 
   return (
     <Container maxWidth="md">
-      <Paper sx={{ padding: 4, marginTop: 4 }}>
+      <Paper sx={{ p: 4, mt: 4 }}>
         <Typography variant="h4" fontWeight="bold" gutterBottom>
           Thêm sản phẩm
         </Typography>
 
-        <Typography color="text.secondary" marginBottom={3}>
+        <Typography color="text.secondary" sx={{ mb: 3 }}>
           Tạo sản phẩm Việt Tiến kèm một biến thể đầu tiên theo size và màu.
         </Typography>
 
-        <Box display="flex" flexDirection="column" gap={2}>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
           <Typography variant="h6">Thông tin sản phẩm</Typography>
 
           <FormControl fullWidth>
@@ -177,11 +177,20 @@ export default function ProductFormPage() {
             rows={3}
           />
 
-          <Typography variant="h6" marginTop={2}>
+          <Typography variant="h6" sx={{ mt: 2 }}>
             Biến thể đầu tiên
           </Typography>
 
-          <Box display="grid" gridTemplateColumns="1fr 1fr" gap={2}>
+          <Box
+            sx={{
+              display: "grid",
+              gridTemplateColumns: {
+                xs: "1fr",
+                md: "1fr 1fr",
+              },
+              gap: 2,
+            }}
+          >
             <TextField
               label="Size"
               placeholder="M, L, XL..."
@@ -256,7 +265,7 @@ export default function ProductFormPage() {
             <Typography color="error">{errorMessage}</Typography>
           )}
 
-          <Box display="flex" gap={2} marginTop={2}>
+          <Box sx={{ display: "flex", gap: 2, mt: 2 }}>
             <Button variant="contained" onClick={handleSubmit}>
               Lưu sản phẩm
             </Button>

@@ -50,12 +50,12 @@ export default function RegisterPage() {
 
   return (
     <Container maxWidth="sm">
-      <Paper sx={{ padding: 4, marginTop: 5 }}>
+      <Paper sx={{ p: 4, mt: 5 }}>
         <Typography variant="h4" fontWeight="bold" gutterBottom>
           Đăng ký tài khoản
         </Typography>
 
-        <Box display="flex" flexDirection="column" gap={2}>
+        <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
           <TextField
             label="Tên đăng nhập"
             value={formData.username}
@@ -94,14 +94,18 @@ export default function RegisterPage() {
           <TextField
             label="Tên đại lý"
             value={formData.agency_name}
-            onChange={(event) => handleChange("agency_name", event.target.value)}
+            onChange={(event) =>
+              handleChange("agency_name", event.target.value)
+            }
             fullWidth
           />
 
           <TextField
             label="Địa chỉ đại lý"
             value={formData.agency_address}
-            onChange={(event) => handleChange("agency_address", event.target.value)}
+            onChange={(event) =>
+              handleChange("agency_address", event.target.value)
+            }
             fullWidth
             multiline
             rows={2}
@@ -119,13 +123,13 @@ export default function RegisterPage() {
             label="Xác nhận mật khẩu"
             type="password"
             value={formData.password_confirm}
-            onChange={(event) => handleChange("password_confirm", event.target.value)}
+            onChange={(event) =>
+              handleChange("password_confirm", event.target.value)
+            }
             fullWidth
           />
 
-          {errorMessage && (
-            <Typography color="error">{errorMessage}</Typography>
-          )}
+          {errorMessage && <Typography color="error">{errorMessage}</Typography>}
 
           <Button variant="contained" onClick={handleRegister}>
             Đăng ký

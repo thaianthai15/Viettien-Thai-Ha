@@ -1,7 +1,17 @@
 from django.contrib import admin
 
-from .models import Category, Product, ProductVariant, Supplier, ImportReceipt, ImportReceiptItem, StockTransaction
-
+from .models import (
+    Category,
+    Product,
+    ProductVariant,
+    Supplier,
+    ImportReceipt,
+    ImportReceiptItem,
+    StockTransaction,
+    Customer,
+    SaleInvoice,
+    SaleInvoiceItem,
+)
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
@@ -87,3 +97,33 @@ class StockTransactionAdmin(admin.ModelAdmin):
         "reference_code",
     ]
     list_filter = ["transaction_type", "created_at"]
+
+@admin.register(Customer)
+class CustomerAdmin(admin.ModelAdmin):
+    list_display = ["id", "name", "phone", "email", "created_at"]
+    search_fields = ["name", "phone", "email"]
+
+
+class SaleInvoiceItemInline(admin.TabularInline):
+    model = SaleInvoiceItem
+    extra = 1
+    readonly_fields = ["subtotal"]
+
+
+@admin.register(SaleInvoice)
+class SaleInvoiceAdmin(admin.ModelAdmin):
+    list_display = [
+        "id",
+        "invoice_code",
+        "customer",
+        "sale_date",
+        "total_amount",
+        "discount_amount",
+        "final_amount",
+        "payment_method",
+        "created_by",
+        "created_at",
+    ]
+    search_fields = ["invoice_code", "customer__name", "customer__phone"]
+    list_filter = ["sale_date", "payment_method"]
+    inlines = [SaleInvoiceItemInline]

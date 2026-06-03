@@ -1,11 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  Box,
-  Button,
-  Container,
-  Paper,
-  Typography,
-} from "@mui/material";
+import { Box, Button, Container, Paper, Typography } from "@mui/material";
 import { Link } from "react-router-dom";
 
 import { getMe } from "../features/auth/authApi";
@@ -38,8 +32,15 @@ export default function HomePage() {
 
   return (
     <Container maxWidth="md">
-      <Paper sx={{ padding: 4, marginTop: 5 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center">
+      <Paper sx={{ p: 4, mt: 5 }}>
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 2,
+          }}
+        >
           <Typography variant="h4" fontWeight="bold">
             Viettien Agency Manager
           </Typography>
@@ -49,7 +50,7 @@ export default function HomePage() {
           </Button>
         </Box>
 
-        <Box marginTop={3}>
+        <Box sx={{ mt: 3 }}>
           {user ? (
             <>
               <Typography>
@@ -64,9 +65,24 @@ export default function HomePage() {
                 Đại lý: <strong>{user.agency_name || "Chưa cập nhật"}</strong>
               </Typography>
 
-              <Box marginTop={3} display="flex" gap={2}>
+              <Box
+                sx={{
+                  mt: 3,
+                  display: "flex",
+                  gap: 2,
+                  flexWrap: "wrap",
+                }}
+              >
                 <Button component={Link} to="/products" variant="contained">
                   Quản lý sản phẩm
+                </Button>
+
+                <Button component={Link} to="/imports" variant="outlined">
+                  Nhập hàng
+                </Button>
+
+                <Button component={Link} to="/sales" variant="outlined">
+                  Bán hàng
                 </Button>
               </Box>
             </>

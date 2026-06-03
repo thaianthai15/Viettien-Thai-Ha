@@ -5,7 +5,11 @@ import RegisterPage from "./pages/RegisterPage";
 import HomePage from "./pages/HomePage";
 import ProductListPage from "./pages/ProductListPage";
 import ProductFormPage from "./pages/ProductFormPage";
+import ImportReceiptFormPage from "./pages/ImportReceiptFormPage";
+import ImportReceiptListPage from "./pages/ImportReceiptListPage";
 import ProtectedRoute from "./routes/ProtectedRoute";
+import SaleInvoiceListPage from "./pages/SaleInvoiceListPage";
+import SaleInvoiceFormPage from "./pages/SaleInvoiceFormPage";
 
 function App() {
   return (
@@ -18,6 +22,10 @@ function App() {
           <Route path="/" element={<HomePage />} />
           <Route path="/products" element={<ProductListPage />} />
           <Route path="/products/new" element={<ProductFormPage />} />
+          <Route path="/imports" element={<ImportReceiptListPage />} />
+          <Route path="/imports/new" element={<ImportReceiptFormPage />} />
+          <Route path="/sales" element={<SaleInvoiceListPage />} />
+          <Route path="/sales/new" element={<SaleInvoiceFormPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

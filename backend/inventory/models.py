@@ -206,3 +206,98 @@ class StockTransaction(models.Model):
 
     def __str__(self):
         return f"{self.transaction_type} - {self.product_variant} - {self.quantity}"
+
+class Customer(models.Model):
+    name = models.CharField(max_length=255, blank=True)
+    phone = models.CharField(max_length=20, blank=True)
+    email = models.EmailField(blank=True)
+    address = models.TextField(blank=True)
+    note = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Khách hàng"
+        verbose_name_plural = "Khách hàng"
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name or self.phone or f"Khách hàng #{self.id}"
+
+
+class SaleInvoice(models.Model):
+    class PaymentMethod(models.TextChoices):
+        CASH = "CASH", "Tiền mặt"
+        BANK_TRANSFER = "BANK_TRANSFER", "Chuyển khoản"
+        CARD = "CARD", "Thẻ"
+        OTHER = "OTHER", "Khác"
+
+    invoice_code = models.CharField(max_length=100, unique=True)
+
+    customer = models.ForeignKey(
+        Customer,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sale_invoices",
+    )
+
+    sale_date = models.DateField(default=timezone.now)
+    note = models.TextField(blank=True)
+
+    total_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    discount_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    final_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+
+    payment_method = models.CharField(
+        max_length=30,
+        choices=PaymentMethod.choices,
+        default=PaymentMethod.CASH,
+    )
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_sale_invoices",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Hóa đơn bán hàng"
+        verbose_name_plural = "Hóa đơn bán hàng"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.invoice_code
+
+
+class SaleInvoiceItem(models.Model):
+    invoice = models.ForeignKey(
+        SaleInvoice,
+        on_delete=models.CASCADE,
+        related_name="items",
+    )
+
+    product_variant = models.ForeignKey(
+        ProductVariant,
+        on_delete=models.PROTECT,
+        related_name="sale_items",
+    )
+
+    quantity = models.PositiveIntegerField()
+    sale_price = models.DecimalField(max_digits=12, decimal_places=2)
+    subtotal = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Dòng hóa đơn bán hàng"
+        verbose_name_plural = "Dòng hóa đơn bán hàng"
+
+    def __str__(self):
+        return f"{self.invoice.invoice_code} - {self.product_variant}"

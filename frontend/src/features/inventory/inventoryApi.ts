@@ -45,6 +45,13 @@ export type CreateProductPayload = {
   is_active: boolean;
 };
 
+export type ProductFilters = {
+  search?: string;
+  category?: string;
+  size?: string;
+  color?: string;
+};
+
 export type CreateProductVariantPayload = {
   product: number;
   size: string;
@@ -55,6 +62,127 @@ export type CreateProductVariantPayload = {
   current_stock: number;
   low_stock_threshold: number;
   is_active: boolean;
+};
+
+export type Supplier = {
+  id: number;
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  note: string;
+  is_active: boolean;
+};
+
+export type ImportReceiptItem = {
+  id: number;
+  product_variant: number;
+  product_variant_name: string;
+  product_code: string;
+  product_name: string;
+  size: string;
+  color: string;
+  quantity: number;
+  import_price: string;
+  subtotal: string;
+  created_at: string;
+};
+
+export type ImportReceipt = {
+  id: number;
+  receipt_code: string;
+  supplier: number;
+  supplier_name: string;
+  import_date: string;
+  note: string;
+  total_amount: string;
+  created_by: number;
+  items: ImportReceiptItem[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type CreateSupplierPayload = {
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  note: string;
+  is_active: boolean;
+};
+
+export type CreateImportReceiptPayload = {
+  receipt_code: string;
+  supplier: number;
+  import_date: string;
+  note: string;
+  items: {
+    product_variant: number;
+    quantity: number;
+    import_price: number;
+  }[];
+};
+
+export type Customer = {
+  id: number;
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  note: string;
+};
+
+export type SaleInvoiceItem = {
+  id: number;
+  product_variant: number;
+  product_code: string;
+  product_name: string;
+  size: string;
+  color: string;
+  quantity: number;
+  sale_price: string;
+  subtotal: string;
+  created_at: string;
+};
+
+export type SaleInvoice = {
+  id: number;
+  invoice_code: string;
+  customer: number | null;
+  customer_name: string;
+  customer_phone: string;
+  sale_date: string;
+  note: string;
+  total_amount: string;
+  discount_amount: string;
+  final_amount: string;
+  payment_method: "CASH" | "BANK_TRANSFER" | "CARD" | "OTHER";
+  created_by: number;
+  items: SaleInvoiceItem[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type CreateCustomerPayload = {
+  name: string;
+  phone: string;
+  email: string;
+  address: string;
+  note: string;
+};
+
+export type CreateSaleInvoicePayload = {
+  invoice_code: string;
+  customer: number | null;
+  sale_date: string;
+  note: string;
+  discount_amount: number;
+  payment_method: "CASH" | "BANK_TRANSFER" | "CARD" | "OTHER";
+  items: {
+    product_variant: number;
+    quantity: number;
+    sale_price: number;
+  }[];
 };
 
 type PaginatedResponse<T> = {
@@ -74,9 +202,19 @@ export const getCategories = async (): Promise<Category[]> => {
   return response.data.results;
 };
 
-export const getProducts = async (): Promise<Product[]> => {
+export const getProducts = async (
+  filters?: ProductFilters
+): Promise<Product[]> => {
   const response = await axiosClient.get<PaginatedResponse<Product> | Product[]>(
-    "/inventory/products/"
+    "/inventory/products/",
+    {
+      params: {
+        search: filters?.search || undefined,
+        category: filters?.category || undefined,
+        size: filters?.size || undefined,
+        color: filters?.color || undefined,
+      },
+    }
   );
 
   if (Array.isArray(response.data)) {
@@ -100,5 +238,97 @@ export const createProductVariant = async (
     "/inventory/product-variants/",
     payload
   );
+  return response.data;
+};
+
+export const getSuppliers = async (): Promise<Supplier[]> => {
+  const response = await axiosClient.get<PaginatedResponse<Supplier> | Supplier[]>(
+    "/inventory/suppliers/"
+  );
+
+  if (Array.isArray(response.data)) {
+    return response.data;
+  }
+
+  return response.data.results;
+};
+
+export const createSupplier = async (
+  payload: CreateSupplierPayload
+): Promise<Supplier> => {
+  const response = await axiosClient.post("/inventory/suppliers/", payload);
+  return response.data;
+};
+
+export const getProductVariants = async (): Promise<ProductVariant[]> => {
+  const response = await axiosClient.get<
+    PaginatedResponse<ProductVariant> | ProductVariant[]
+  >("/inventory/product-variants/");
+
+  if (Array.isArray(response.data)) {
+    return response.data;
+  }
+
+  return response.data.results;
+};
+
+export const getImportReceipts = async (): Promise<ImportReceipt[]> => {
+  const response = await axiosClient.get<
+    PaginatedResponse<ImportReceipt> | ImportReceipt[]
+  >("/inventory/import-receipts/");
+
+  if (Array.isArray(response.data)) {
+    return response.data;
+  }
+
+  return response.data.results;
+};
+
+export const createImportReceipt = async (
+  payload: CreateImportReceiptPayload
+): Promise<ImportReceipt> => {
+  const response = await axiosClient.post(
+    "/inventory/import-receipts/",
+    payload
+  );
+
+  return response.data;
+};
+
+export const getCustomers = async (): Promise<Customer[]> => {
+  const response = await axiosClient.get<PaginatedResponse<Customer> | Customer[]>(
+    "/inventory/customers/"
+  );
+
+  if (Array.isArray(response.data)) {
+    return response.data;
+  }
+
+  return response.data.results;
+};
+
+export const createCustomer = async (
+  payload: CreateCustomerPayload
+): Promise<Customer> => {
+  const response = await axiosClient.post("/inventory/customers/", payload);
+  return response.data;
+};
+
+export const getSaleInvoices = async (): Promise<SaleInvoice[]> => {
+  const response = await axiosClient.get<
+    PaginatedResponse<SaleInvoice> | SaleInvoice[]
+  >("/inventory/sale-invoices/");
+
+  if (Array.isArray(response.data)) {
+    return response.data;
+  }
+
+  return response.data.results;
+};
+
+export const createSaleInvoice = async (
+  payload: CreateSaleInvoicePayload
+): Promise<SaleInvoice> => {
+  const response = await axiosClient.post("/inventory/sale-invoices/", payload);
   return response.data;
 };

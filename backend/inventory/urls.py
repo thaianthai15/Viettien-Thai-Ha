@@ -8,6 +8,8 @@ from .views import (
     SupplierViewSet,
     ImportReceiptViewSet,
     StockTransactionViewSet,
+    CustomerViewSet,
+    SaleInvoiceViewSet,
 )
 
 router = DefaultRouter()
@@ -17,6 +19,8 @@ router.register("product-variants", ProductVariantViewSet, basename="product-var
 router.register("suppliers", SupplierViewSet, basename="supplier")
 router.register("import-receipts", ImportReceiptViewSet, basename="import-receipt")
 router.register("stock-transactions", StockTransactionViewSet, basename="stock-transaction")
+router.register("customers", CustomerViewSet, basename="customer")
+router.register("sale-invoices", SaleInvoiceViewSet, basename="sale-invoice")
 
 urlpatterns = [
     path("", include(router.urls)),
