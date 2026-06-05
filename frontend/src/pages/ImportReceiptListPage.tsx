@@ -1,141 +1,115 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  Box,
-  Button,
-  CircularProgress,
-  Container,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  Typography,
-} from "@mui/material";
+import AppLayout from "../components/AppLayout";
+import type { ImportReceipt } from "../features/inventory/inventoryApi";
 
 import {
+  downloadImportsExcel,
   getImportReceipts,
-  type ImportReceipt,
 } from "../features/inventory/inventoryApi";
+
+const formatCurrency = (value: string | number) =>
+  Number(value || 0).toLocaleString("vi-VN") + " đ";
 
 export default function ImportReceiptListPage() {
   const [receipts, setReceipts] = useState<ImportReceipt[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const formatCurrency = (value: string | number) => {
-    return Number(value).toLocaleString("vi-VN") + "đ";
-  };
-
-  const fetchReceipts = async () => {
-    try {
-      setIsLoading(true);
-      setErrorMessage("");
-
-      const data = await getImportReceipts();
-      setReceipts(data);
-    } catch (error: any) {
-      console.error(error);
-
-      if (error.response?.status === 401) {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
-        window.location.href = "/login";
-        return;
-      }
-
-      setErrorMessage("Không thể tải danh sách phiếu nhập.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchReceipts();
+    getImportReceipts()
+      .then(setReceipts)
+      .catch((error) => {
+        console.error(error);
+        setErrorMessage("Không tải được danh sách phiếu nhập.");
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
   return (
-    <Container maxWidth="lg">
-      <Paper sx={{ p: 3, mt: 4 }}>
-        <Box
-          sx={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 2,
-            flexWrap: "wrap",
-          }}
-        >
-          <Box>
-            <Typography variant="h4" fontWeight="bold">
-              Phiếu nhập hàng
-            </Typography>
+    <AppLayout
+      title="Phiếu nhập"
+      subtitle="Theo dõi lịch sử nhập hàng từ nhà cung cấp."
+      action={
+        <div className="flex gap-2">
+          <button
+            onClick={downloadImportsExcel}
+            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Xuất Excel
+          </button>
+          <Link
+            to="/imports/new"
+            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            + Lập phiếu nhập
+          </Link>
+        </div>
+      }
+    >
+      {errorMessage && (
+        <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+          {errorMessage}
+        </div>
+      )}
 
-            <Typography color="text.secondary">
-              Theo dõi các lần nhập hàng từ nhà cung cấp.
-            </Typography>
-          </Box>
+      <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 px-6 py-4">
+          <h3 className="font-bold text-slate-900">
+            Danh sách phiếu nhập ({receipts.length})
+          </h3>
+        </div>
 
-          <Button component={Link} to="/imports/new" variant="contained">
-            Tạo phiếu nhập
-          </Button>
-        </Box>
+        {isLoading ? (
+          <div className="p-6 text-sm text-slate-500">Đang tải...</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[820px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-slate-500">
+                  <th className="px-6 py-3">Mã phiếu</th>
+                  <th className="px-6 py-3">Nhà cung cấp</th>
+                  <th className="px-6 py-3">Ngày nhập</th>
+                  <th className="px-6 py-3">Số dòng</th>
+                  <th className="px-6 py-3">Tổng tiền</th>
+                  <th className="px-6 py-3">Ghi chú</th>
+                </tr>
+              </thead>
 
-        <Box sx={{ mt: 3 }}>
-          {isLoading && (
-            <Box
-              sx={{
-                display: "flex",
-                justifyContent: "center",
-                p: 4,
-              }}
-            >
-              <CircularProgress />
-            </Box>
-          )}
-
-          {errorMessage && <Typography color="error">{errorMessage}</Typography>}
-
-          {!isLoading && !errorMessage && (
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Mã phiếu</TableCell>
-                  <TableCell>Nhà cung cấp</TableCell>
-                  <TableCell>Ngày nhập</TableCell>
-                  <TableCell>Số dòng</TableCell>
-                  <TableCell>Tổng tiền</TableCell>
-                  <TableCell>Ghi chú</TableCell>
-                </TableRow>
-              </TableHead>
-
-              <TableBody>
+              <tbody>
                 {receipts.map((receipt) => (
-                  <TableRow key={receipt.id}>
-                    <TableCell>{receipt.receipt_code}</TableCell>
-                    <TableCell>{receipt.supplier_name}</TableCell>
-                    <TableCell>{receipt.import_date}</TableCell>
-                    <TableCell>{receipt.items.length}</TableCell>
-                    <TableCell>
+                  <tr
+                    key={receipt.id}
+                    className="border-b border-slate-100 text-slate-700"
+                  >
+                    <td className="px-6 py-4 font-semibold text-slate-900">
+                      {receipt.receipt_code}
+                    </td>
+                    <td className="px-6 py-4">{receipt.supplier_name}</td>
+                    <td className="px-6 py-4">{receipt.import_date}</td>
+                    <td className="px-6 py-4">{receipt.items.length}</td>
+                    <td className="px-6 py-4 font-bold">
                       {formatCurrency(receipt.total_amount)}
-                    </TableCell>
-                    <TableCell>{receipt.note}</TableCell>
-                  </TableRow>
+                    </td>
+                    <td className="px-6 py-4">{receipt.note || "-"}</td>
+                  </tr>
                 ))}
 
                 {receipts.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={6} align="center">
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-6 py-10 text-center text-slate-500"
+                    >
                       Chưa có phiếu nhập nào.
-                    </TableCell>
-                  </TableRow>
+                    </td>
+                  </tr>
                 )}
-              </TableBody>
-            </Table>
-          )}
-        </Box>
-      </Paper>
-    </Container>
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </AppLayout>
   );
 }

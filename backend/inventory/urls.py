@@ -10,6 +10,11 @@ from .views import (
     StockTransactionViewSet,
     CustomerViewSet,
     SaleInvoiceViewSet,
+    dashboard_summary,
+    export_sales_excel,
+    export_imports_excel,
+    export_inventory_excel,
+    export_monthly_word,
 )
 
 router = DefaultRouter()
@@ -23,5 +28,13 @@ router.register("customers", CustomerViewSet, basename="customer")
 router.register("sale-invoices", SaleInvoiceViewSet, basename="sale-invoice")
 
 urlpatterns = [
+    path("dashboard/summary/", dashboard_summary, name="dashboard-summary"),
+
+    path("exports/sales/", export_sales_excel, name="export-sales-excel"),
+    path("exports/imports/", export_imports_excel, name="export-imports-excel"),
+    path("exports/inventory/", export_inventory_excel, name="export-inventory-excel"),
+
+    path("exports/monthly-word/", export_monthly_word, name="export-monthly-word"),
+
     path("", include(router.urls)),
 ]

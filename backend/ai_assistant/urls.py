@@ -1,3 +1,7 @@
 from django.urls import path
 
-urlpatterns = []
+from .views import AIChatView
+
+urlpatterns = [
+    path("chat/", AIChatView.as_view(), name="ai-chat"),
+]

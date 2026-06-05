@@ -1,206 +1,116 @@
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  Box,
-  Button,
-  Container,
-  FormControl,
-  IconButton,
-  InputLabel,
-  MenuItem,
-  Paper,
-  Select,
-  TextField,
-  Typography,
-} from "@mui/material";
-import DeleteIcon from "@mui/icons-material/Delete";
+import AppLayout from "../components/AppLayout";
+import type { Customer, ProductVariant } from "../features/inventory/inventoryApi";
 
 import {
   createSaleInvoice,
   getCustomers,
   getProductVariants,
-  type Customer,
-  type ProductVariant,
 } from "../features/inventory/inventoryApi";
-
 type SaleItemForm = {
   product_variant: string;
   quantity: string;
   sale_price: string;
 };
 
+const createEmptyItem = (): SaleItemForm => ({
+  product_variant: "",
+  quantity: "1",
+  sale_price: "",
+});
+
+const paymentMethods = [
+  { value: "CASH", label: "Tiền mặt" },
+  { value: "BANK_TRANSFER", label: "Chuyển khoản" },
+  { value: "CARD", label: "Thẻ" },
+  { value: "OTHER", label: "Khác" },
+] as const;
+
 export default function SaleInvoiceFormPage() {
   const navigate = useNavigate();
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
-  const [errorMessage, setErrorMessage] = useState("");
 
-  const today = new Date().toISOString().slice(0, 10);
-
-  const [invoiceForm, setInvoiceForm] = useState({
+  const [formData, setFormData] = useState({
     invoice_code: `HD-${Date.now()}`,
     customer: "",
-    sale_date: today,
+    sale_date: new Date().toISOString().slice(0, 10),
     note: "",
     discount_amount: "0",
     payment_method: "CASH" as "CASH" | "BANK_TRANSFER" | "CARD" | "OTHER",
   });
 
-  const [items, setItems] = useState<SaleItemForm[]>([
-    {
-      product_variant: "",
-      quantity: "1",
-      sale_price: "0",
-    },
-  ]);
-
-  const formatCurrency = (value: number) => {
-    return value.toLocaleString("vi-VN") + "đ";
-  };
-
-  const totalAmount = useMemo(() => {
-    return items.reduce((sum, item) => {
-      return sum + Number(item.quantity || 0) * Number(item.sale_price || 0);
-    }, 0);
-  }, [items]);
-
-  const finalAmount = totalAmount - Number(invoiceForm.discount_amount || 0);
-
-  const fetchInitialData = async () => {
-    try {
-      const [customerData, variantData] = await Promise.all([
-        getCustomers(),
-        getProductVariants(),
-      ]);
-
-      setCustomers(customerData);
-      setVariants(variantData);
-    } catch (error: any) {
-      console.error(error);
-
-      if (error.response?.status === 401) {
-        localStorage.clear();
-        window.location.href = "/login";
-        return;
-      }
-
-      setErrorMessage("Không thể tải dữ liệu khách hàng hoặc sản phẩm.");
-    }
-  };
+  const [items, setItems] = useState<SaleItemForm[]>([createEmptyItem()]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
-    fetchInitialData();
+    Promise.all([getCustomers(), getProductVariants()])
+      .then(([customerData, variantData]) => {
+        setCustomers(customerData);
+        setVariants(variantData);
+      })
+      .catch((error) => {
+        console.error(error);
+        setErrorMessage("Không tải được dữ liệu khách hàng hoặc sản phẩm.");
+      });
   }, []);
 
-  const handleInvoiceChange = (field: string, value: string) => {
-    setInvoiceForm((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+  const updateItem = (
+    index: number,
+    field: keyof SaleItemForm,
+    value: string
+  ) => {
+    setItems((prev) =>
+      prev.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, [field]: value } : item
+      )
+    );
   };
 
-  const handleItemChange = (index: number, field: string, value: string) => {
-    setItems((prev) => {
-      const newItems = [...prev];
+  const handleChooseVariant = (index: number, variantId: string) => {
+    const variant = variants.find((item) => String(item.id) === variantId);
 
-      newItems[index] = {
-        ...newItems[index],
-        [field]: value,
-      };
-
-      if (field === "product_variant") {
-        const selectedVariant = variants.find(
-          (variant) => variant.id === Number(value)
-        );
-
-        if (selectedVariant) {
-          newItems[index].sale_price = String(Number(selectedVariant.sale_price));
-        }
-      }
-
-      return newItems;
-    });
+    setItems((prev) =>
+      prev.map((item, itemIndex) =>
+        itemIndex === index
+          ? {
+              ...item,
+              product_variant: variantId,
+              sale_price: variant?.sale_price || item.sale_price,
+            }
+          : item
+      )
+    );
   };
 
-  const handleAddItem = () => {
-    setItems((prev) => [
-      ...prev,
-      {
-        product_variant: "",
-        quantity: "1",
-        sale_price: "0",
-      },
-    ]);
+  const removeItem = (index: number) => {
+    setItems((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
   };
 
-  const handleRemoveItem = (index: number) => {
-    setItems((prev) => {
-      if (prev.length === 1) return prev;
-      return prev.filter((_, itemIndex) => itemIndex !== index);
-    });
-  };
+  const totalAmount = items.reduce(
+    (sum, item) => sum + Number(item.quantity || 0) * Number(item.sale_price || 0),
+    0
+  );
 
-  const validateForm = () => {
-    if (!invoiceForm.invoice_code.trim()) {
-      return "Vui lòng nhập mã hóa đơn.";
-    }
+  const finalAmount = totalAmount - Number(formData.discount_amount || 0);
 
-    for (const item of items) {
-      if (!item.product_variant) {
-        return "Vui lòng chọn sản phẩm cho tất cả các dòng.";
-      }
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
 
-      const selectedVariant = variants.find(
-        (variant) => variant.id === Number(item.product_variant)
-      );
-
-      if (!selectedVariant) {
-        return "Sản phẩm không hợp lệ.";
-      }
-
-      if (Number(item.quantity) <= 0) {
-        return "Số lượng bán phải lớn hơn 0.";
-      }
-
-      if (Number(item.quantity) > selectedVariant.current_stock) {
-        return `${selectedVariant.product_code} - ${selectedVariant.product_name} chỉ còn ${selectedVariant.current_stock} sản phẩm.`;
-      }
-
-      if (Number(item.sale_price) < 0) {
-        return "Giá bán không được âm.";
-      }
-    }
-
-    if (Number(invoiceForm.discount_amount || 0) < 0) {
-      return "Giảm giá không được âm.";
-    }
-
-    if (finalAmount < 0) {
-      return "Tổng tiền sau giảm giá không được âm.";
-    }
-
-    return "";
-  };
-
-  const handleSubmit = async () => {
     try {
+      setIsLoading(true);
       setErrorMessage("");
 
-      const validationError = validateForm();
-
-      if (validationError) {
-        setErrorMessage(validationError);
-        return;
-      }
-
       await createSaleInvoice({
-        invoice_code: invoiceForm.invoice_code,
-        customer: invoiceForm.customer ? Number(invoiceForm.customer) : null,
-        sale_date: invoiceForm.sale_date,
-        note: invoiceForm.note,
-        discount_amount: Number(invoiceForm.discount_amount || 0),
-        payment_method: invoiceForm.payment_method,
+        invoice_code: formData.invoice_code,
+        customer: formData.customer ? Number(formData.customer) : null,
+        sale_date: formData.sale_date,
+        note: formData.note,
+        discount_amount: Number(formData.discount_amount || 0),
+        payment_method: formData.payment_method,
         items: items.map((item) => ({
           product_variant: Number(item.product_variant),
           quantity: Number(item.quantity),
@@ -209,223 +119,279 @@ export default function SaleInvoiceFormPage() {
       });
 
       navigate("/sales");
-    } catch (error: any) {
+    } catch (error) {
       console.error(error);
-
-      if (error.response?.status === 401) {
-        localStorage.clear();
-        window.location.href = "/login";
-        return;
-      }
-
-      if (error.response?.data) {
-        setErrorMessage(JSON.stringify(error.response.data));
-        return;
-      }
-
-      setErrorMessage("Tạo hóa đơn bán thất bại.");
+      setErrorMessage("Không tạo được hóa đơn. Kiểm tra tồn kho và dữ liệu.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <Container maxWidth="lg">
-      <Paper sx={{ padding: 4, marginTop: 4 }}>
-        <Typography variant="h4" fontWeight="bold" gutterBottom>
-          Tạo hóa đơn bán hàng
-        </Typography>
+    <AppLayout
+      title="Tạo hóa đơn bán"
+      subtitle="Bán hàng, tự động trừ tồn kho và ghi nhận doanh thu."
+    >
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {errorMessage && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+            {errorMessage}
+          </div>
+        )}
 
-        <Typography color="text.secondary" marginBottom={3}>
-          Bán nhiều sản phẩm trong một hóa đơn. Sau khi lưu, tồn kho sẽ tự động giảm.
-        </Typography>
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-bold text-slate-900">
+            Thông tin hóa đơn
+          </h3>
 
-        <Box display="flex" flexDirection="column" gap={2}>
-          <Typography variant="h6">Thông tin hóa đơn</Typography>
-
-          <Box display="grid" gridTemplateColumns="1fr 1fr 1fr" gap={2}>
-            <TextField
+          <div className="mt-5 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
+            <Input
               label="Mã hóa đơn"
-              value={invoiceForm.invoice_code}
-              onChange={(event) =>
-                handleInvoiceChange("invoice_code", event.target.value)
+              value={formData.invoice_code}
+              onChange={(value) =>
+                setFormData((prev) => ({ ...prev, invoice_code: value }))
               }
-              fullWidth
+              required
             />
 
-            <FormControl fullWidth>
-              <InputLabel>Khách hàng</InputLabel>
-              <Select
-                label="Khách hàng"
-                value={invoiceForm.customer}
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-slate-700">
+                Khách hàng
+              </label>
+              <select
+                value={formData.customer}
                 onChange={(event) =>
-                  handleInvoiceChange("customer", event.target.value)
+                  setFormData((prev) => ({
+                    ...prev,
+                    customer: event.target.value,
+                  }))
                 }
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-900 focus:ring-4 focus:ring-slate-100"
               >
-                <MenuItem value="">Khách lẻ</MenuItem>
+                <option value="">Khách lẻ</option>
                 {customers.map((customer) => (
-                  <MenuItem key={customer.id} value={String(customer.id)}>
+                  <option key={customer.id} value={customer.id}>
                     {customer.name || customer.phone || `Khách #${customer.id}`}
-                  </MenuItem>
+                  </option>
                 ))}
-              </Select>
-            </FormControl>
+              </select>
+            </div>
 
-            <TextField
+            <Input
               label="Ngày bán"
               type="date"
-              value={invoiceForm.sale_date}
-              onChange={(event) =>
-                handleInvoiceChange("sale_date", event.target.value)
+              value={formData.sale_date}
+              onChange={(value) =>
+                setFormData((prev) => ({ ...prev, sale_date: value }))
               }
-              InputLabelProps={{ shrink: true }}
-              fullWidth
+              required
             />
-          </Box>
 
-          <Box display="grid" gridTemplateColumns="1fr 1fr" gap={2}>
-            <FormControl fullWidth>
-              <InputLabel>Phương thức thanh toán</InputLabel>
-              <Select
-                label="Phương thức thanh toán"
-                value={invoiceForm.payment_method}
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-slate-700">
+                Phương thức thanh toán
+              </label>
+              <select
+                value={formData.payment_method}
                 onChange={(event) =>
-                  handleInvoiceChange("payment_method", event.target.value)
+                  setFormData((prev) => ({
+                    ...prev,
+                    payment_method: event.target.value as
+                      | "CASH"
+                      | "BANK_TRANSFER"
+                      | "CARD"
+                      | "OTHER",
+                  }))
                 }
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-900 focus:ring-4 focus:ring-slate-100"
               >
-                <MenuItem value="CASH">Tiền mặt</MenuItem>
-                <MenuItem value="BANK_TRANSFER">Chuyển khoản</MenuItem>
-                <MenuItem value="CARD">Thẻ</MenuItem>
-                <MenuItem value="OTHER">Khác</MenuItem>
-              </Select>
-            </FormControl>
+                {paymentMethods.map((method) => (
+                  <option key={method.value} value={method.value}>
+                    {method.label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-            <TextField
+            <Input
               label="Giảm giá"
               type="number"
-              value={invoiceForm.discount_amount}
-              onChange={(event) =>
-                handleInvoiceChange("discount_amount", event.target.value)
+              value={formData.discount_amount}
+              onChange={(value) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  discount_amount: value,
+                }))
               }
-              fullWidth
             />
-          </Box>
 
-          <TextField
-            label="Ghi chú"
-            value={invoiceForm.note}
-            onChange={(event) => handleInvoiceChange("note", event.target.value)}
-            fullWidth
-            multiline
-            rows={2}
-          />
+            <div className="lg:col-span-3">
+              <Input
+                label="Ghi chú"
+                value={formData.note}
+                onChange={(value) =>
+                  setFormData((prev) => ({ ...prev, note: value }))
+                }
+              />
+            </div>
+          </div>
+        </section>
 
-          <Box marginTop={2}>
-            <Typography variant="h6">Danh sách sản phẩm bán</Typography>
-          </Box>
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between gap-4">
+            <h3 className="text-lg font-bold text-slate-900">
+              Sản phẩm bán
+            </h3>
+            <button
+              type="button"
+              onClick={() => setItems((prev) => [...prev, createEmptyItem()])}
+              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+            >
+              + Thêm dòng
+            </button>
+          </div>
 
-          {items.map((item, index) => {
-            const subtotal =
-              Number(item.quantity || 0) * Number(item.sale_price || 0);
-
-            return (
-              <Box
+          <div className="mt-5 space-y-4">
+            {items.map((item, index) => (
+              <div
                 key={index}
-                display="grid"
-                gridTemplateColumns="2fr 1fr 1fr 1fr auto"
-                gap={2}
-                alignItems="center"
+                className="grid gap-4 rounded-2xl bg-slate-50 p-4 md:grid-cols-12"
               >
-                <FormControl fullWidth>
-                  <InputLabel>Sản phẩm / size / màu</InputLabel>
-                  <Select
-                    label="Sản phẩm / size / màu"
+                <div className="md:col-span-6">
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">
+                    Sản phẩm / biến thể
+                  </label>
+                  <select
                     value={item.product_variant}
                     onChange={(event) =>
-                      handleItemChange(index, "product_variant", event.target.value)
+                      handleChooseVariant(index, event.target.value)
                     }
+                    required
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-slate-900 focus:ring-4 focus:ring-slate-100"
                   >
+                    <option value="">Chọn sản phẩm</option>
                     {variants.map((variant) => (
-                      <MenuItem key={variant.id} value={String(variant.id)}>
+                      <option key={variant.id} value={variant.id}>
                         {variant.product_code} - {variant.product_name} -{" "}
-                        {variant.size} - {variant.color} | Tồn:{" "}
+                        {variant.size} - {variant.color} - Tồn:{" "}
                         {variant.current_stock}
-                      </MenuItem>
+                      </option>
                     ))}
-                  </Select>
-                </FormControl>
+                  </select>
+                </div>
 
-                <TextField
-                  label="Số lượng"
-                  type="number"
-                  value={item.quantity}
-                  onChange={(event) =>
-                    handleItemChange(index, "quantity", event.target.value)
-                  }
-                  fullWidth
-                />
+                <div className="md:col-span-2">
+                  <Input
+                    label="Số lượng"
+                    type="number"
+                    value={item.quantity}
+                    onChange={(value) => updateItem(index, "quantity", value)}
+                    required
+                  />
+                </div>
 
-                <TextField
-                  label="Giá bán"
-                  type="number"
-                  value={item.sale_price}
-                  onChange={(event) =>
-                    handleItemChange(index, "sale_price", event.target.value)
-                  }
-                  fullWidth
-                />
+                <div className="md:col-span-3">
+                  <Input
+                    label="Giá bán"
+                    type="number"
+                    value={item.sale_price}
+                    onChange={(value) => updateItem(index, "sale_price", value)}
+                    required
+                  />
+                </div>
 
-                <TextField
-                  label="Thành tiền"
-                  value={formatCurrency(subtotal)}
-                  InputProps={{ readOnly: true }}
-                  fullWidth
-                />
+                <div className="flex items-end md:col-span-1">
+                  <button
+                    type="button"
+                    onClick={() => removeItem(index)}
+                    disabled={items.length === 1}
+                    className="w-full rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-sm font-semibold text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Xóa
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
 
-                <IconButton
-                  color="error"
-                  onClick={() => handleRemoveItem(index)}
-                  disabled={items.length === 1}
-                >
-                  <DeleteIcon />
-                </IconButton>
-              </Box>
-            );
-          })}
+          <div className="mt-6 grid gap-4 md:grid-cols-3">
+            <SummaryBox label="Tổng tiền" value={totalAmount} />
+            <SummaryBox label="Giảm giá" value={Number(formData.discount_amount || 0)} />
+            <SummaryBox label="Khách cần trả" value={finalAmount} dark />
+          </div>
+        </section>
 
-          <Box>
-            <Button variant="outlined" onClick={handleAddItem}>
-              Thêm dòng sản phẩm
-            </Button>
-          </Box>
+        <div className="flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={() => navigate("/sales")}
+            className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Hủy
+          </button>
+          <button
+            disabled={isLoading}
+            className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+          >
+            {isLoading ? "Đang lưu..." : "Lưu hóa đơn"}
+          </button>
+        </div>
+      </form>
+    </AppLayout>
+  );
+}
 
-          <Box display="flex" flexDirection="column" alignItems="flex-end" marginTop={2}>
-            <Typography variant="h6">
-              Tổng tiền: {formatCurrency(totalAmount)}
-            </Typography>
-            <Typography variant="h6">
-              Giảm giá: {formatCurrency(Number(invoiceForm.discount_amount || 0))}
-            </Typography>
-            <Typography variant="h5" fontWeight="bold">
-              Cần thanh toán: {formatCurrency(finalAmount)}
-            </Typography>
-          </Box>
+function Input({
+  label,
+  value,
+  onChange,
+  type = "text",
+  required = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+  required?: boolean;
+}) {
+  return (
+    <div>
+      <label className="mb-2 block text-sm font-semibold text-slate-700">
+        {label}
+      </label>
+      <input
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        required={required}
+        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-slate-900 focus:ring-4 focus:ring-slate-100"
+      />
+    </div>
+  );
+}
 
-          {errorMessage && (
-            <Typography color="error" whiteSpace="pre-wrap">
-              {errorMessage}
-            </Typography>
-          )}
-
-          <Box display="flex" gap={2} marginTop={2}>
-            <Button variant="contained" onClick={handleSubmit}>
-              Lưu hóa đơn
-            </Button>
-
-            <Button variant="outlined" onClick={() => navigate("/sales")}>
-              Hủy
-            </Button>
-          </Box>
-        </Box>
-      </Paper>
-    </Container>
+function SummaryBox({
+  label,
+  value,
+  dark = false,
+}: {
+  label: string;
+  value: number;
+  dark?: boolean;
+}) {
+  return (
+    <div
+      className={[
+        "rounded-2xl px-6 py-4",
+        dark ? "bg-slate-900 text-white" : "bg-slate-50 text-slate-900",
+      ].join(" ")}
+    >
+      <p className={["text-sm", dark ? "text-slate-300" : "text-slate-500"].join(" ")}>
+        {label}
+      </p>
+      <p className="mt-1 text-2xl font-bold">
+        {value.toLocaleString("vi-VN")} đ
+      </p>
+    </div>
   );
 }

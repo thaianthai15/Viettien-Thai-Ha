@@ -1,125 +1,139 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import {
-  Box,
-  Button,
-  CircularProgress,
-  Container,
-  Paper,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  Typography,
-} from "@mui/material";
+import AppLayout from "../components/AppLayout";
+import type { SaleInvoice } from "../features/inventory/inventoryApi";
 
 import {
+  downloadSalesExcel,
   getSaleInvoices,
-  type SaleInvoice,
 } from "../features/inventory/inventoryApi";
+
+const formatCurrency = (value: string | number) =>
+  Number(value || 0).toLocaleString("vi-VN") + " đ";
+
+const paymentMethodLabel = {
+  CASH: "Tiền mặt",
+  BANK_TRANSFER: "Chuyển khoản",
+  CARD: "Thẻ",
+  OTHER: "Khác",
+};
 
 export default function SaleInvoiceListPage() {
   const [invoices, setInvoices] = useState<SaleInvoice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const formatCurrency = (value: string | number) => {
-    return Number(value).toLocaleString("vi-VN") + "đ";
-  };
-
-  const fetchInvoices = async () => {
-    try {
-      setIsLoading(true);
-      setErrorMessage("");
-
-      const data = await getSaleInvoices();
-      setInvoices(data);
-    } catch (error: any) {
-      console.error(error);
-
-      if (error.response?.status === 401) {
-        localStorage.clear();
-        window.location.href = "/login";
-        return;
-      }
-
-      setErrorMessage("Không thể tải danh sách hóa đơn bán.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchInvoices();
+    getSaleInvoices()
+      .then(setInvoices)
+      .catch((error) => {
+        console.error(error);
+        setErrorMessage("Không tải được danh sách hóa đơn.");
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
   return (
-    <Container maxWidth="lg">
-      <Paper sx={{ padding: 3, marginTop: 4 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center">
-          <Box>
-            <Typography variant="h4" fontWeight="bold">
-              Hóa đơn bán hàng
-            </Typography>
-            <Typography color="text.secondary">
-              Theo dõi hóa đơn bán hàng và doanh thu.
-            </Typography>
-          </Box>
+    <AppLayout
+      title="Hóa đơn bán hàng"
+      subtitle="Theo dõi doanh thu và lịch sử bán hàng."
+      action={
+        <div className="flex gap-2">
+          <button
+            onClick={downloadSalesExcel}
+            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Xuất Excel
+          </button>
+          <Link
+            to="/sales/new"
+            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+          >
+            + Tạo hóa đơn
+          </Link>
+        </div>
+      }
+    >
+      {errorMessage && (
+        <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+          {errorMessage}
+        </div>
+      )}
 
-          <Button component={Link} to="/sales/new" variant="contained">
-            Tạo hóa đơn bán
-          </Button>
-        </Box>
+      <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 px-6 py-4">
+          <h3 className="font-bold text-slate-900">
+            Danh sách hóa đơn ({invoices.length})
+          </h3>
+        </div>
 
-        <Box marginTop={3}>
-          {isLoading && (
-            <Box display="flex" justifyContent="center" padding={4}>
-              <CircularProgress />
-            </Box>
-          )}
+        {isLoading ? (
+          <div className="p-6 text-sm text-slate-500">Đang tải...</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[920px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-slate-500">
+                  <th className="px-6 py-3">Mã hóa đơn</th>
+                  <th className="px-6 py-3">Khách hàng</th>
+                  <th className="px-6 py-3">Ngày bán</th>
+                  <th className="px-6 py-3">Số dòng</th>
+                  <th className="px-6 py-3">Tổng tiền</th>
+                  <th className="px-6 py-3">Giảm giá</th>
+                  <th className="px-6 py-3">Thanh toán</th>
+                  <th className="px-6 py-3">PTTT</th>
+                </tr>
+              </thead>
 
-          {errorMessage && <Typography color="error">{errorMessage}</Typography>}
-
-          {!isLoading && !errorMessage && (
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Mã hóa đơn</TableCell>
-                  <TableCell>Khách hàng</TableCell>
-                  <TableCell>Ngày bán</TableCell>
-                  <TableCell>Số dòng</TableCell>
-                  <TableCell>Giảm giá</TableCell>
-                  <TableCell>Thanh toán</TableCell>
-                  <TableCell>Tổng cuối</TableCell>
-                </TableRow>
-              </TableHead>
-
-              <TableBody>
+              <tbody>
                 {invoices.map((invoice) => (
-                  <TableRow key={invoice.id}>
-                    <TableCell>{invoice.invoice_code}</TableCell>
-                    <TableCell>{invoice.customer_name || "Khách lẻ"}</TableCell>
-                    <TableCell>{invoice.sale_date}</TableCell>
-                    <TableCell>{invoice.items.length}</TableCell>
-                    <TableCell>{formatCurrency(invoice.discount_amount)}</TableCell>
-                    <TableCell>{invoice.payment_method}</TableCell>
-                    <TableCell>{formatCurrency(invoice.final_amount)}</TableCell>
-                  </TableRow>
+                  <tr
+                    key={invoice.id}
+                    className="border-b border-slate-100 text-slate-700"
+                  >
+                    <td className="px-6 py-4 font-semibold text-slate-900">
+                      {invoice.invoice_code}
+                    </td>
+                    <td className="px-6 py-4">
+                      {invoice.customer_name || "Khách lẻ"}
+                      {invoice.customer_phone && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          {invoice.customer_phone}
+                        </p>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">{invoice.sale_date}</td>
+                    <td className="px-6 py-4">{invoice.items.length}</td>
+                    <td className="px-6 py-4">
+                      {formatCurrency(invoice.total_amount)}
+                    </td>
+                    <td className="px-6 py-4">
+                      {formatCurrency(invoice.discount_amount)}
+                    </td>
+                    <td className="px-6 py-4 font-bold">
+                      {formatCurrency(invoice.final_amount)}
+                    </td>
+                    <td className="px-6 py-4">
+                      {paymentMethodLabel[invoice.payment_method]}
+                    </td>
+                  </tr>
                 ))}
 
                 {invoices.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={7} align="center">
-                      Chưa có hóa đơn bán nào.
-                    </TableCell>
-                  </TableRow>
+                  <tr>
+                    <td
+                      colSpan={8}
+                      className="px-6 py-10 text-center text-slate-500"
+                    >
+                      Chưa có hóa đơn nào.
+                    </td>
+                  </tr>
                 )}
-              </TableBody>
-            </Table>
-          )}
-        </Box>
-      </Paper>
-    </Container>
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </AppLayout>
   );
 }

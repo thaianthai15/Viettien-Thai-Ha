@@ -1,36 +1,24 @@
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  Box,
-  Button,
-  Container,
-  FormControl,
-  InputLabel,
-  MenuItem,
-  Paper,
-  Select,
-  TextField,
-  Typography,
-} from "@mui/material";
+import AppLayout from "../components/AppLayout";
+import type { Category } from "../features/inventory/inventoryApi";
 
 import {
   createProduct,
   createProductVariant,
   getCategories,
-  type Category,
 } from "../features/inventory/inventoryApi";
 
 export default function ProductFormPage() {
   const navigate = useNavigate();
 
   const [categories, setCategories] = useState<Category[]>([]);
-  const [errorMessage, setErrorMessage] = useState("");
-
   const [productForm, setProductForm] = useState({
     category: "",
     code: "",
     name: "",
     description: "",
+    is_active: true,
   });
 
   const [variantForm, setVariantForm] = useState({
@@ -41,241 +29,275 @@ export default function ProductFormPage() {
     sale_price: "",
     current_stock: "",
     low_stock_threshold: "5",
+    is_active: true,
   });
 
-  useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        const data = await getCategories();
-        setCategories(data);
-      } catch (error) {
-        console.error(error);
-        setErrorMessage("Không thể tải danh mục.");
-      }
-    };
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
-    fetchCategories();
+  useEffect(() => {
+    getCategories()
+      .then(setCategories)
+      .catch((error) => {
+        console.error(error);
+        setErrorMessage("Không tải được danh mục.");
+      });
   }, []);
 
-  const handleProductChange = (field: string, value: string) => {
-    setProductForm((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
 
-  const handleVariantChange = (field: string, value: string) => {
-    setVariantForm((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
-
-  const handleSubmit = async () => {
     try {
+      setIsLoading(true);
       setErrorMessage("");
-
-      if (!productForm.category) {
-        setErrorMessage("Vui lòng chọn danh mục.");
-        return;
-      }
-
-      if (!productForm.code || !productForm.name) {
-        setErrorMessage("Vui lòng nhập mã hàng và tên sản phẩm.");
-        return;
-      }
-
-      if (!variantForm.size || !variantForm.color) {
-        setErrorMessage("Vui lòng nhập size và màu.");
-        return;
-      }
 
       const product = await createProduct({
         category: Number(productForm.category),
         code: productForm.code,
         name: productForm.name,
         description: productForm.description,
-        is_active: true,
+        is_active: productForm.is_active,
       });
 
-      await createProductVariant({
-        product: product.id,
-        size: variantForm.size,
-        color: variantForm.color,
-        barcode: variantForm.barcode,
-        import_price: Number(variantForm.import_price || 0),
-        sale_price: Number(variantForm.sale_price || 0),
-        current_stock: Number(variantForm.current_stock || 0),
-        low_stock_threshold: Number(variantForm.low_stock_threshold || 5),
-        is_active: true,
-      });
+      if (variantForm.size && variantForm.color) {
+        await createProductVariant({
+          product: product.id,
+          size: variantForm.size,
+          color: variantForm.color,
+          barcode: variantForm.barcode,
+          import_price: Number(variantForm.import_price || 0),
+          sale_price: Number(variantForm.sale_price || 0),
+          current_stock: Number(variantForm.current_stock || 0),
+          low_stock_threshold: Number(variantForm.low_stock_threshold || 5),
+          is_active: variantForm.is_active,
+        });
+      }
 
       navigate("/products");
     } catch (error) {
       console.error(error);
-      setErrorMessage("Tạo sản phẩm thất bại. Vui lòng kiểm tra lại dữ liệu.");
+      setErrorMessage("Không tạo được sản phẩm. Kiểm tra lại dữ liệu.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <Container maxWidth="md">
-      <Paper sx={{ p: 4, mt: 4 }}>
-        <Typography variant="h4" fontWeight="bold" gutterBottom>
-          Thêm sản phẩm
-        </Typography>
+    <AppLayout
+      title="Thêm sản phẩm"
+      subtitle="Tạo sản phẩm mới và biến thể ban đầu."
+    >
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {errorMessage && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+            {errorMessage}
+          </div>
+        )}
 
-        <Typography color="text.secondary" sx={{ mb: 3 }}>
-          Tạo sản phẩm Việt Tiến kèm một biến thể đầu tiên theo size và màu.
-        </Typography>
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-bold text-slate-900">
+            Thông tin sản phẩm
+          </h3>
 
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          <Typography variant="h6">Thông tin sản phẩm</Typography>
+          <div className="mt-5 grid gap-5 md:grid-cols-2">
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-slate-700">
+                Danh mục
+              </label>
+              <select
+                value={productForm.category}
+                onChange={(event) =>
+                  setProductForm((prev) => ({
+                    ...prev,
+                    category: event.target.value,
+                  }))
+                }
+                required
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-900 focus:ring-4 focus:ring-slate-100"
+              >
+                <option value="">Chọn danh mục</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          <FormControl fullWidth>
-            <InputLabel>Danh mục</InputLabel>
-            <Select
-              label="Danh mục"
-              value={productForm.category}
-              onChange={(event) =>
-                handleProductChange("category", event.target.value)
+            <Input
+              label="Mã sản phẩm"
+              value={productForm.code}
+              onChange={(value) =>
+                setProductForm((prev) => ({ ...prev, code: value }))
               }
-            >
-              {categories.map((category) => (
-                <MenuItem key={category.id} value={String(category.id)}>
-                  {category.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+              required
+            />
 
-          <TextField
-            label="Mã hàng"
-            value={productForm.code}
-            onChange={(event) =>
-              handleProductChange("code", event.target.value)
-            }
-            fullWidth
-          />
+            <Input
+              label="Tên sản phẩm"
+              value={productForm.name}
+              onChange={(value) =>
+                setProductForm((prev) => ({ ...prev, name: value }))
+              }
+              required
+            />
 
-          <TextField
-            label="Tên sản phẩm"
-            value={productForm.name}
-            onChange={(event) =>
-              handleProductChange("name", event.target.value)
-            }
-            fullWidth
-          />
+            <div className="flex items-end">
+              <label className="flex items-center gap-3 rounded-xl bg-slate-50 px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={productForm.is_active}
+                  onChange={(event) =>
+                    setProductForm((prev) => ({
+                      ...prev,
+                      is_active: event.target.checked,
+                    }))
+                  }
+                />
+                <span className="text-sm font-medium text-slate-700">
+                  Đang kinh doanh
+                </span>
+              </label>
+            </div>
 
-          <TextField
-            label="Mô tả"
-            value={productForm.description}
-            onChange={(event) =>
-              handleProductChange("description", event.target.value)
-            }
-            fullWidth
-            multiline
-            rows={3}
-          />
+            <div className="md:col-span-2">
+              <label className="mb-2 block text-sm font-semibold text-slate-700">
+                Mô tả
+              </label>
+              <textarea
+                value={productForm.description}
+                onChange={(event) =>
+                  setProductForm((prev) => ({
+                    ...prev,
+                    description: event.target.value,
+                  }))
+                }
+                rows={4}
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-900 focus:ring-4 focus:ring-slate-100"
+              />
+            </div>
+          </div>
+        </section>
 
-          <Typography variant="h6" sx={{ mt: 2 }}>
-            Biến thể đầu tiên
-          </Typography>
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-bold text-slate-900">
+            Biến thể ban đầu
+          </h3>
+          <p className="mt-1 text-sm text-slate-500">
+            Có thể bỏ trống nếu chỉ muốn tạo sản phẩm trước.
+          </p>
 
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: {
-                xs: "1fr",
-                md: "1fr 1fr",
-              },
-              gap: 2,
-            }}
-          >
-            <TextField
+          <div className="mt-5 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
+            <Input
               label="Size"
-              placeholder="M, L, XL..."
               value={variantForm.size}
-              onChange={(event) =>
-                handleVariantChange("size", event.target.value)
+              onChange={(value) =>
+                setVariantForm((prev) => ({ ...prev, size: value }))
               }
-              fullWidth
             />
-
-            <TextField
+            <Input
               label="Màu"
-              placeholder="Trắng, Xanh, Đen..."
               value={variantForm.color}
-              onChange={(event) =>
-                handleVariantChange("color", event.target.value)
+              onChange={(value) =>
+                setVariantForm((prev) => ({ ...prev, color: value }))
               }
-              fullWidth
             />
-
-            <TextField
+            <Input
               label="Barcode"
               value={variantForm.barcode}
-              onChange={(event) =>
-                handleVariantChange("barcode", event.target.value)
+              onChange={(value) =>
+                setVariantForm((prev) => ({ ...prev, barcode: value }))
               }
-              fullWidth
             />
-
-            <TextField
-              label="Tồn kho ban đầu"
+            <Input
+              label="Tồn kho"
               type="number"
               value={variantForm.current_stock}
-              onChange={(event) =>
-                handleVariantChange("current_stock", event.target.value)
+              onChange={(value) =>
+                setVariantForm((prev) => ({
+                  ...prev,
+                  current_stock: value,
+                }))
               }
-              fullWidth
             />
-
-            <TextField
+            <Input
               label="Giá nhập"
               type="number"
               value={variantForm.import_price}
-              onChange={(event) =>
-                handleVariantChange("import_price", event.target.value)
+              onChange={(value) =>
+                setVariantForm((prev) => ({
+                  ...prev,
+                  import_price: value,
+                }))
               }
-              fullWidth
             />
-
-            <TextField
+            <Input
               label="Giá bán"
               type="number"
               value={variantForm.sale_price}
-              onChange={(event) =>
-                handleVariantChange("sale_price", event.target.value)
+              onChange={(value) =>
+                setVariantForm((prev) => ({ ...prev, sale_price: value }))
               }
-              fullWidth
             />
-
-            <TextField
-              label="Ngưỡng cảnh báo tồn thấp"
+            <Input
+              label="Ngưỡng tồn thấp"
               type="number"
               value={variantForm.low_stock_threshold}
-              onChange={(event) =>
-                handleVariantChange("low_stock_threshold", event.target.value)
+              onChange={(value) =>
+                setVariantForm((prev) => ({
+                  ...prev,
+                  low_stock_threshold: value,
+                }))
               }
-              fullWidth
             />
-          </Box>
+          </div>
+        </section>
 
-          {errorMessage && (
-            <Typography color="error">{errorMessage}</Typography>
-          )}
+        <div className="flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={() => navigate("/products")}
+            className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Hủy
+          </button>
+          <button
+            disabled={isLoading}
+            className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+          >
+            {isLoading ? "Đang lưu..." : "Lưu sản phẩm"}
+          </button>
+        </div>
+      </form>
+    </AppLayout>
+  );
+}
 
-          <Box sx={{ display: "flex", gap: 2, mt: 2 }}>
-            <Button variant="contained" onClick={handleSubmit}>
-              Lưu sản phẩm
-            </Button>
-
-            <Button variant="outlined" onClick={() => navigate("/products")}>
-              Hủy
-            </Button>
-          </Box>
-        </Box>
-      </Paper>
-    </Container>
+function Input({
+  label,
+  value,
+  onChange,
+  type = "text",
+  required = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+  required?: boolean;
+}) {
+  return (
+    <div>
+      <label className="mb-2 block text-sm font-semibold text-slate-700">
+        {label}
+      </label>
+      <input
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        required={required}
+        className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-900 focus:ring-4 focus:ring-slate-100"
+      />
+    </div>
   );
 }

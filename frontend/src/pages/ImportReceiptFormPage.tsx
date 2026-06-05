@@ -1,26 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  Box,
-  Button,
-  Container,
-  FormControl,
-  IconButton,
-  InputLabel,
-  MenuItem,
-  Paper,
-  Select,
-  TextField,
-  Typography,
-} from "@mui/material";
-import DeleteIcon from "@mui/icons-material/Delete";
+import AppLayout from "../components/AppLayout";
+import type { ProductVariant, Supplier } from "../features/inventory/inventoryApi";
 
 import {
   createImportReceipt,
   getProductVariants,
   getSuppliers,
-  type ProductVariant,
-  type Supplier,
 } from "../features/inventory/inventoryApi";
 
 type ImportItemForm = {
@@ -29,173 +15,75 @@ type ImportItemForm = {
   import_price: string;
 };
 
+const createEmptyItem = (): ImportItemForm => ({
+  product_variant: "",
+  quantity: "1",
+  import_price: "",
+});
+
 export default function ImportReceiptFormPage() {
   const navigate = useNavigate();
 
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
-  const [errorMessage, setErrorMessage] = useState("");
 
-  const today = new Date().toISOString().slice(0, 10);
-
-  const [receiptForm, setReceiptForm] = useState({
+  const [formData, setFormData] = useState({
     receipt_code: `PN-${Date.now()}`,
     supplier: "",
-    import_date: today,
+    import_date: new Date().toISOString().slice(0, 10),
     note: "",
   });
 
-  const [items, setItems] = useState<ImportItemForm[]>([
-    {
-      product_variant: "",
-      quantity: "1",
-      import_price: "0",
-    },
-  ]);
-
-  const formatCurrency = (value: number) => {
-    return value.toLocaleString("vi-VN") + "đ";
-  };
-
-  const totalAmount = useMemo(() => {
-    return items.reduce((sum, item) => {
-      const quantity = Number(item.quantity || 0);
-      const importPrice = Number(item.import_price || 0);
-
-      return sum + quantity * importPrice;
-    }, 0);
-  }, [items]);
-
-  const fetchInitialData = async () => {
-    try {
-      const [supplierData, variantData] = await Promise.all([
-        getSuppliers(),
-        getProductVariants(),
-      ]);
-
-      setSuppliers(supplierData);
-      setVariants(variantData);
-    } catch (error: any) {
-      console.error(error);
-
-      if (error.response?.status === 401) {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
-        window.location.href = "/login";
-        return;
-      }
-
-      setErrorMessage("Không thể tải dữ liệu nhà cung cấp hoặc sản phẩm.");
-    }
-  };
+  const [items, setItems] = useState<ImportItemForm[]>([createEmptyItem()]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
   useEffect(() => {
-    fetchInitialData();
+    Promise.all([getSuppliers(), getProductVariants()])
+      .then(([supplierData, variantData]) => {
+        setSuppliers(supplierData);
+        setVariants(variantData);
+      })
+      .catch((error) => {
+        console.error(error);
+        setErrorMessage("Không tải được dữ liệu nhà cung cấp hoặc sản phẩm.");
+      });
   }, []);
 
-  const handleReceiptChange = (field: string, value: string) => {
-    setReceiptForm((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+  const updateItem = (
+    index: number,
+    field: keyof ImportItemForm,
+    value: string
+  ) => {
+    setItems((prev) =>
+      prev.map((item, itemIndex) =>
+        itemIndex === index ? { ...item, [field]: value } : item
+      )
+    );
   };
 
-  const handleItemChange = (index: number, field: string, value: string) => {
-    setItems((prev) => {
-      const newItems = [...prev];
-
-      newItems[index] = {
-        ...newItems[index],
-        [field]: value,
-      };
-
-      if (field === "product_variant") {
-        const selectedVariant = variants.find(
-          (variant) => variant.id === Number(value)
-        );
-
-        if (selectedVariant) {
-          newItems[index].import_price = String(
-            Number(selectedVariant.import_price)
-          );
-        }
-      }
-
-      return newItems;
-    });
+  const removeItem = (index: number) => {
+    setItems((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
   };
 
-  const handleAddItem = () => {
-    setItems((prev) => [
-      ...prev,
-      {
-        product_variant: "",
-        quantity: "1",
-        import_price: "0",
-      },
-    ]);
-  };
+  const totalAmount = items.reduce(
+    (sum, item) =>
+      sum + Number(item.quantity || 0) * Number(item.import_price || 0),
+    0
+  );
 
-  const handleRemoveItem = (index: number) => {
-    setItems((prev) => {
-      if (prev.length === 1) {
-        return prev;
-      }
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
 
-      return prev.filter((_, itemIndex) => itemIndex !== index);
-    });
-  };
-
-  const validateForm = () => {
-    if (!receiptForm.receipt_code.trim()) {
-      return "Vui lòng nhập mã phiếu nhập.";
-    }
-
-    if (!receiptForm.supplier) {
-      return "Vui lòng chọn nhà cung cấp.";
-    }
-
-    if (!receiptForm.import_date) {
-      return "Vui lòng chọn ngày nhập.";
-    }
-
-    if (items.length === 0) {
-      return "Phiếu nhập phải có ít nhất một sản phẩm.";
-    }
-
-    for (const item of items) {
-      if (!item.product_variant) {
-        return "Vui lòng chọn sản phẩm cho tất cả các dòng.";
-      }
-
-      if (Number(item.quantity) <= 0) {
-        return "Số lượng nhập phải lớn hơn 0.";
-      }
-
-      if (Number(item.import_price) < 0) {
-        return "Giá nhập không được âm.";
-      }
-    }
-
-    return "";
-  };
-
-  const handleSubmit = async () => {
     try {
+      setIsLoading(true);
       setErrorMessage("");
 
-      const validationError = validateForm();
-
-      if (validationError) {
-        setErrorMessage(validationError);
-        return;
-      }
-
       await createImportReceipt({
-        receipt_code: receiptForm.receipt_code,
-        supplier: Number(receiptForm.supplier),
-        import_date: receiptForm.import_date,
-        note: receiptForm.note,
+        receipt_code: formData.receipt_code,
+        supplier: Number(formData.supplier),
+        import_date: formData.import_date,
+        note: formData.note,
         items: items.map((item) => ({
           product_variant: Number(item.product_variant),
           quantity: Number(item.quantity),
@@ -204,209 +92,218 @@ export default function ImportReceiptFormPage() {
       });
 
       navigate("/imports");
-    } catch (error: any) {
+    } catch (error) {
       console.error(error);
-
-      if (error.response?.status === 401) {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
-        window.location.href = "/login";
-        return;
-      }
-
-      if (error.response?.data) {
-        setErrorMessage(JSON.stringify(error.response.data));
-        return;
-      }
-
-      setErrorMessage("Tạo phiếu nhập thất bại.");
+      setErrorMessage("Không tạo được phiếu nhập. Kiểm tra lại dữ liệu.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <Container maxWidth="lg">
-      <Paper sx={{ p: 4, mt: 4 }}>
-        <Typography variant="h4" fontWeight="bold" gutterBottom>
-          Tạo phiếu nhập hàng
-        </Typography>
+    <AppLayout
+      title="Lập phiếu nhập"
+      subtitle="Nhập hàng từ nhà cung cấp và tự động tăng tồn kho."
+    >
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {errorMessage && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+            {errorMessage}
+          </div>
+        )}
 
-        <Typography color="text.secondary" sx={{ mb: 3 }}>
-          Lập phiếu nhập nhiều sản phẩm. Sau khi lưu, tồn kho sẽ tự động tăng.
-        </Typography>
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h3 className="text-lg font-bold text-slate-900">
+            Thông tin phiếu nhập
+          </h3>
 
-        <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          <Typography variant="h6">Thông tin phiếu nhập</Typography>
-
-          <Box
-            sx={{
-              display: "grid",
-              gridTemplateColumns: {
-                xs: "1fr",
-                md: "1fr 1fr 1fr",
-              },
-              gap: 2,
-            }}
-          >
-            <TextField
-              label="Mã phiếu nhập"
-              value={receiptForm.receipt_code}
-              onChange={(event) =>
-                handleReceiptChange("receipt_code", event.target.value)
+          <div className="mt-5 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
+            <Input
+              label="Mã phiếu"
+              value={formData.receipt_code}
+              onChange={(value) =>
+                setFormData((prev) => ({ ...prev, receipt_code: value }))
               }
-              fullWidth
+              required
             />
 
-            <FormControl fullWidth>
-              <InputLabel>Nhà cung cấp</InputLabel>
-              <Select
-                label="Nhà cung cấp"
-                value={receiptForm.supplier}
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-slate-700">
+                Nhà cung cấp
+              </label>
+              <select
+                value={formData.supplier}
                 onChange={(event) =>
-                  handleReceiptChange("supplier", event.target.value)
+                  setFormData((prev) => ({
+                    ...prev,
+                    supplier: event.target.value,
+                  }))
                 }
+                required
+                className="w-full rounded-xl border border-slate-200 px-4 py-3 outline-none focus:border-slate-900 focus:ring-4 focus:ring-slate-100"
               >
+                <option value="">Chọn nhà cung cấp</option>
                 {suppliers.map((supplier) => (
-                  <MenuItem key={supplier.id} value={String(supplier.id)}>
+                  <option key={supplier.id} value={supplier.id}>
                     {supplier.name}
-                  </MenuItem>
+                  </option>
                 ))}
-              </Select>
-            </FormControl>
+              </select>
+            </div>
 
-            <TextField
+            <Input
               label="Ngày nhập"
               type="date"
-              value={receiptForm.import_date}
-              onChange={(event) =>
-                handleReceiptChange("import_date", event.target.value)
+              value={formData.import_date}
+              onChange={(value) =>
+                setFormData((prev) => ({ ...prev, import_date: value }))
               }
-              InputLabelProps={{ shrink: true }}
-              fullWidth
+              required
             />
-          </Box>
 
-          <TextField
-            label="Ghi chú"
-            value={receiptForm.note}
-            onChange={(event) =>
-              handleReceiptChange("note", event.target.value)
-            }
-            fullWidth
-            multiline
-            rows={2}
-          />
+            <Input
+              label="Ghi chú"
+              value={formData.note}
+              onChange={(value) =>
+                setFormData((prev) => ({ ...prev, note: value }))
+              }
+            />
+          </div>
+        </section>
 
-          <Box sx={{ mt: 2 }}>
-            <Typography variant="h6">Danh sách sản phẩm nhập</Typography>
-          </Box>
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center justify-between gap-4">
+            <h3 className="text-lg font-bold text-slate-900">
+              Sản phẩm nhập
+            </h3>
+            <button
+              type="button"
+              onClick={() => setItems((prev) => [...prev, createEmptyItem()])}
+              className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+            >
+              + Thêm dòng
+            </button>
+          </div>
 
-          {items.map((item, index) => {
-            const subtotal =
-              Number(item.quantity || 0) * Number(item.import_price || 0);
-
-            return (
-              <Box
+          <div className="mt-5 space-y-4">
+            {items.map((item, index) => (
+              <div
                 key={index}
-                sx={{
-                  display: "grid",
-                  gridTemplateColumns: {
-                    xs: "1fr",
-                    md: "2fr 1fr 1fr 1fr auto",
-                  },
-                  gap: 2,
-                  alignItems: "center",
-                }}
+                className="grid gap-4 rounded-2xl bg-slate-50 p-4 md:grid-cols-12"
               >
-                <FormControl fullWidth>
-                  <InputLabel>Sản phẩm / size / màu</InputLabel>
-                  <Select
-                    label="Sản phẩm / size / màu"
+                <div className="md:col-span-6">
+                  <label className="mb-2 block text-sm font-semibold text-slate-700">
+                    Sản phẩm / biến thể
+                  </label>
+                  <select
                     value={item.product_variant}
                     onChange={(event) =>
-                      handleItemChange(
-                        index,
-                        "product_variant",
-                        event.target.value
-                      )
+                      updateItem(index, "product_variant", event.target.value)
                     }
+                    required
+                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-slate-900 focus:ring-4 focus:ring-slate-100"
                   >
+                    <option value="">Chọn sản phẩm</option>
                     {variants.map((variant) => (
-                      <MenuItem key={variant.id} value={String(variant.id)}>
+                      <option key={variant.id} value={variant.id}>
                         {variant.product_code} - {variant.product_name} -{" "}
-                        {variant.size} - {variant.color} | Tồn:{" "}
-                        {variant.current_stock}
-                      </MenuItem>
+                        {variant.size} - {variant.color}
+                      </option>
                     ))}
-                  </Select>
-                </FormControl>
+                  </select>
+                </div>
 
-                <TextField
-                  label="Số lượng"
-                  type="number"
-                  value={item.quantity}
-                  onChange={(event) =>
-                    handleItemChange(index, "quantity", event.target.value)
-                  }
-                  fullWidth
-                />
+                <div className="md:col-span-2">
+                  <Input
+                    label="Số lượng"
+                    type="number"
+                    value={item.quantity}
+                    onChange={(value) => updateItem(index, "quantity", value)}
+                    required
+                  />
+                </div>
 
-                <TextField
-                  label="Giá nhập"
-                  type="number"
-                  value={item.import_price}
-                  onChange={(event) =>
-                    handleItemChange(index, "import_price", event.target.value)
-                  }
-                  fullWidth
-                />
+                <div className="md:col-span-3">
+                  <Input
+                    label="Giá nhập"
+                    type="number"
+                    value={item.import_price}
+                    onChange={(value) =>
+                      updateItem(index, "import_price", value)
+                    }
+                    required
+                  />
+                </div>
 
-                <TextField
-                  label="Thành tiền"
-                  value={formatCurrency(subtotal)}
-                  InputProps={{ readOnly: true }}
-                  fullWidth
-                />
+                <div className="flex items-end md:col-span-1">
+                  <button
+                    type="button"
+                    onClick={() => removeItem(index)}
+                    disabled={items.length === 1}
+                    className="w-full rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-sm font-semibold text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Xóa
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
 
-                <IconButton
-                  color="error"
-                  onClick={() => handleRemoveItem(index)}
-                  disabled={items.length === 1}
-                >
-                  <DeleteIcon />
-                </IconButton>
-              </Box>
-            );
-          })}
+          <div className="mt-6 flex justify-end">
+            <div className="rounded-2xl bg-slate-900 px-6 py-4 text-white">
+              <p className="text-sm text-slate-300">Tổng tiền nhập</p>
+              <p className="mt-1 text-2xl font-bold">
+                {totalAmount.toLocaleString("vi-VN")} đ
+              </p>
+            </div>
+          </div>
+        </section>
 
-          <Box>
-            <Button variant="outlined" onClick={handleAddItem}>
-              Thêm dòng sản phẩm
-            </Button>
-          </Box>
+        <div className="flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={() => navigate("/imports")}
+            className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Hủy
+          </button>
+          <button
+            disabled={isLoading}
+            className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60"
+          >
+            {isLoading ? "Đang lưu..." : "Lưu phiếu nhập"}
+          </button>
+        </div>
+      </form>
+    </AppLayout>
+  );
+}
 
-          <Box sx={{ display: "flex", justifyContent: "flex-end", mt: 2 }}>
-            <Typography variant="h5" fontWeight="bold">
-              Tổng tiền: {formatCurrency(totalAmount)}
-            </Typography>
-          </Box>
-
-          {errorMessage && (
-            <Typography color="error" sx={{ whiteSpace: "pre-wrap" }}>
-              {errorMessage}
-            </Typography>
-          )}
-
-          <Box sx={{ display: "flex", gap: 2, mt: 2 }}>
-            <Button variant="contained" onClick={handleSubmit}>
-              Lưu phiếu nhập
-            </Button>
-
-            <Button variant="outlined" onClick={() => navigate("/imports")}>
-              Hủy
-            </Button>
-          </Box>
-        </Box>
-      </Paper>
-    </Container>
+function Input({
+  label,
+  value,
+  onChange,
+  type = "text",
+  required = false,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+  required?: boolean;
+}) {
+  return (
+    <div>
+      <label className="mb-2 block text-sm font-semibold text-slate-700">
+        {label}
+      </label>
+      <input
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        required={required}
+        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 outline-none focus:border-slate-900 focus:ring-4 focus:ring-slate-100"
+      />
+    </div>
   );
 }

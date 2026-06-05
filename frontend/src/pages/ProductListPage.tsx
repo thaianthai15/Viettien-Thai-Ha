@@ -1,34 +1,19 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import Box from "@mui/material/Box";
-import Typography from "@mui/material/Typography";
-import {
-  Button,
-  Chip,
-  CircularProgress,
-  Container,
-  FormControl,
-  InputLabel,
-  MenuItem,
-  Paper,
-  Select,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
-  TextField,
-} from "@mui/material";
+import AppLayout from "../components/AppLayout";
+import type { Category, Product } from "../features/inventory/inventoryApi";
 
 import {
   getCategories,
   getProducts,
-  type Category,
-  type Product,
 } from "../features/inventory/inventoryApi";
+
+const formatCurrency = (value: string | number) =>
+  Number(value || 0).toLocaleString("vi-VN") + " đ";
 
 export default function ProductListPage() {
   const [categories, setCategories] = useState<Category[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [filters, setFilters] = useState({
     search: "",
     category: "",
@@ -36,227 +21,212 @@ export default function ProductListPage() {
     color: "",
   });
 
-  const fetchCategories = async () => {
-    try {
-      const data = await getCategories();
-      setCategories(data);
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
-  const fetchProducts = async (customFilters = filters) => {
+  const fetchData = async () => {
     try {
       setIsLoading(true);
       setErrorMessage("");
 
-      const data = await getProducts(customFilters);
-      setProducts(data);
+      const [categoryData, productData] = await Promise.all([
+        getCategories(),
+        getProducts(filters),
+      ]);
+
+      setCategories(categoryData);
+      setProducts(productData);
     } catch (error) {
       console.error(error);
-      setErrorMessage("Không thể tải danh sách sản phẩm.");
+      setErrorMessage("Không tải được danh sách sản phẩm.");
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchCategories();
+    fetchData();
   }, []);
-
-  useEffect(() => {
-    fetchProducts();
-  }, []);
-
-  const handleFilterChange = (field: string, value: string) => {
-    setFilters((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
 
   const handleSearch = () => {
-    fetchProducts(filters);
-  };
-
-  const handleResetFilter = () => {
-    const emptyFilters = {
-      search: "",
-      category: "",
-      size: "",
-      color: "",
-    };
-
-    setFilters(emptyFilters);
-    fetchProducts(emptyFilters);
+    fetchData();
   };
 
   return (
-    <Container maxWidth="lg">
-      <Paper sx={{ padding: 3, marginTop: 4 }}>
-        <Box display="flex" justifyContent="space-between" alignItems="center">
-          <Box>
-            <Typography variant="h4" fontWeight="bold">
-              Danh sách sản phẩm
-            </Typography>
-            <Typography color="text.secondary">
-              Quản lý sản phẩm Việt Tiến theo mã hàng, danh mục, size và màu.
-            </Typography>
-          </Box>
-
-          <Button component={Link} to="/products/new" variant="contained">
-            Thêm sản phẩm
-          </Button>
-        </Box>
-
-        <Box marginTop={3}>
-          {isLoading && (
-            <Box display="flex" justifyContent="center" padding={4}>
-              <CircularProgress />
-            </Box>
-          )}
-
-          {errorMessage && (
-            <Typography color="error">{errorMessage}</Typography>
-          )}
-
-          {!isLoading && !errorMessage && (
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Mã hàng</TableCell>
-                  <TableCell>Tên sản phẩm</TableCell>
-                  <TableCell>Danh mục</TableCell>
-                  <TableCell>Biến thể</TableCell>
-                  <TableCell>Tổng tồn</TableCell>
-                  <TableCell>Trạng thái</TableCell>
-                </TableRow>
-              </TableHead>
-
-              <TableBody>
-                {products.map((product) => {
-                  const totalStock = product.variants.reduce(
-                    (sum, variant) => sum + variant.current_stock,
-                    0,
-                  );
-
-                  return (
-                    <TableRow key={product.id}>
-                      <TableCell>{product.code}</TableCell>
-                      <TableCell>{product.name}</TableCell>
-                      <TableCell>{product.category_name}</TableCell>
-
-                      <TableCell>
-                        <Box display="flex" gap={1} flexWrap="wrap">
-                          {product.variants.length > 0 ? (
-                            product.variants.map((variant) => (
-                              <Chip
-                                key={variant.id}
-                                label={`${variant.size} - ${variant.color}: ${variant.current_stock}`}
-                                size="small"
-                              />
-                            ))
-                          ) : (
-                            <Typography color="text.secondary">
-                              Chưa có biến thể
-                            </Typography>
-                          )}
-                        </Box>
-                      </TableCell>
-
-                      <TableCell>{totalStock}</TableCell>
-
-                      <TableCell>
-                        {product.is_active ? (
-                          <Chip label="Đang bán" color="success" size="small" />
-                        ) : (
-                          <Chip
-                            label="Ngừng bán"
-                            color="default"
-                            size="small"
-                          />
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-
-                {products.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={6} align="center">
-                      Chưa có sản phẩm nào.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          )}
-        </Box>
-
-        <Box
-          marginTop={3}
-          display="grid"
-          gridTemplateColumns="2fr 1fr 1fr 1fr auto auto"
-          gap={2}
+    <AppLayout
+      title="Sản phẩm"
+      subtitle="Quản lý danh sách sản phẩm, biến thể, size, màu và tồn kho."
+      action={
+        <Link
+          to="/products/new"
+          className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
         >
-          <TextField
-            label="Tìm mã hàng / tên hàng"
-            value={filters.search}
-            onChange={(event) =>
-              handleFilterChange("search", event.target.value)
-            }
-            fullWidth
-          />
+          + Thêm sản phẩm
+        </Link>
+      }
+    >
+      <div className="space-y-6">
+        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="grid gap-4 md:grid-cols-5">
+            <input
+              value={filters.search}
+              onChange={(event) =>
+                setFilters((prev) => ({ ...prev, search: event.target.value }))
+              }
+              placeholder="Tìm mã, tên sản phẩm..."
+              className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-slate-900 focus:ring-4 focus:ring-slate-100 md:col-span-2"
+            />
 
-          <FormControl fullWidth>
-            <InputLabel>Danh mục</InputLabel>
-            <Select
-              label="Danh mục"
+            <select
               value={filters.category}
               onChange={(event) =>
-                handleFilterChange("category", event.target.value)
+                setFilters((prev) => ({
+                  ...prev,
+                  category: event.target.value,
+                }))
               }
+              className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-slate-900 focus:ring-4 focus:ring-slate-100"
             >
-              <MenuItem value="">Tất cả</MenuItem>
+              <option value="">Tất cả danh mục</option>
               {categories.map((category) => (
-                <MenuItem key={category.id} value={String(category.id)}>
+                <option key={category.id} value={category.id}>
                   {category.name}
-                </MenuItem>
+                </option>
               ))}
-            </Select>
-          </FormControl>
+            </select>
 
-          <TextField
-            label="Size"
-            placeholder="M, L, XL"
-            value={filters.size}
-            onChange={(event) => handleFilterChange("size", event.target.value)}
-            fullWidth
-          />
+            <input
+              value={filters.size}
+              onChange={(event) =>
+                setFilters((prev) => ({ ...prev, size: event.target.value }))
+              }
+              placeholder="Size"
+              className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-slate-900 focus:ring-4 focus:ring-slate-100"
+            />
 
-          <TextField
-            label="Màu"
-            placeholder="Trắng, Đen..."
-            value={filters.color}
-            onChange={(event) =>
-              handleFilterChange("color", event.target.value)
-            }
-            fullWidth
-          />
+            <div className="flex gap-3">
+              <input
+                value={filters.color}
+                onChange={(event) =>
+                  setFilters((prev) => ({ ...prev, color: event.target.value }))
+                }
+                placeholder="Màu"
+                className="min-w-0 flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-slate-900 focus:ring-4 focus:ring-slate-100"
+              />
+              <button
+                onClick={handleSearch}
+                className="rounded-xl bg-slate-900 px-5 text-sm font-semibold text-white hover:bg-slate-800"
+              >
+                Lọc
+              </button>
+            </div>
+          </div>
+        </section>
 
-          <Button variant="contained" onClick={handleSearch}>
-            Lọc
-          </Button>
+        {errorMessage && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+            {errorMessage}
+          </div>
+        )}
 
-          <Button variant="outlined" onClick={handleResetFilter}>
-            Reset
-          </Button>
-        </Box>
-      </Paper>
-    </Container>
+        <section className="rounded-3xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 px-6 py-4">
+            <h3 className="font-bold text-slate-900">
+              Danh sách sản phẩm ({products.length})
+            </h3>
+          </div>
+
+          {isLoading ? (
+            <div className="p-6 text-sm text-slate-500">Đang tải...</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[900px] text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-slate-500">
+                    <th className="px-6 py-3">Mã</th>
+                    <th className="px-6 py-3">Tên sản phẩm</th>
+                    <th className="px-6 py-3">Danh mục</th>
+                    <th className="px-6 py-3">Biến thể</th>
+                    <th className="px-6 py-3">Tồn kho</th>
+                    <th className="px-6 py-3">Giá bán</th>
+                    <th className="px-6 py-3">Trạng thái</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {products.map((product) => {
+                    const totalStock = product.variants.reduce(
+                      (sum, variant) => sum + variant.current_stock,
+                      0
+                    );
+
+                    const firstPrice = product.variants[0]?.sale_price || 0;
+
+                    return (
+                      <tr
+                        key={product.id}
+                        className="border-b border-slate-100 text-slate-700"
+                      >
+                        <td className="px-6 py-4 font-semibold text-slate-900">
+                          {product.code}
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="font-semibold text-slate-900">
+                            {product.name}
+                          </p>
+                          <p className="mt-1 line-clamp-1 text-xs text-slate-500">
+                            {product.description || "Không có mô tả"}
+                          </p>
+                        </td>
+                        <td className="px-6 py-4">{product.category_name}</td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-wrap gap-2">
+                            {product.variants.map((variant) => (
+                              <span
+                                key={variant.id}
+                                className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600"
+                              >
+                                {variant.size} / {variant.color}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 font-bold">{totalStock}</td>
+                        <td className="px-6 py-4">
+                          {formatCurrency(firstPrice)}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={[
+                              "rounded-full px-3 py-1 text-xs font-semibold",
+                              product.is_active
+                                ? "bg-emerald-50 text-emerald-700"
+                                : "bg-slate-100 text-slate-500",
+                            ].join(" ")}
+                          >
+                            {product.is_active ? "Đang bán" : "Ẩn"}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {products.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        className="px-6 py-10 text-center text-slate-500"
+                      >
+                        Chưa có sản phẩm nào.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </div>
+    </AppLayout>
   );
 }

@@ -171,6 +171,41 @@ export type CreateCustomerPayload = {
   note: string;
 };
 
+export type DashboardSummary = {
+  today: {
+    revenue: string | number;
+    invoice_count: number;
+    sold_quantity: number;
+  };
+  inventory: {
+    total_products: number;
+    total_variants: number;
+    total_stock: number;
+    low_stock_count: number;
+  };
+  low_stock_variants: {
+    id: number;
+    product_code: string;
+    product_name: string;
+    category_name: string;
+    size: string;
+    color: string;
+    current_stock: number;
+    low_stock_threshold: number;
+  }[];
+  top_products: {
+    product_code: string;
+    product_name: string;
+    total_quantity: number;
+    total_revenue: string | number;
+  }[];
+  revenue_chart: {
+    date: string;
+    revenue: string | number;
+    invoice_count: number;
+  }[];
+};
+
 export type CreateSaleInvoicePayload = {
   invoice_code: string;
   customer: number | null;
@@ -331,4 +366,62 @@ export const createSaleInvoice = async (
 ): Promise<SaleInvoice> => {
   const response = await axiosClient.post("/inventory/sale-invoices/", payload);
   return response.data;
+};
+
+export const getDashboardSummary = async (): Promise<DashboardSummary> => {
+  const response = await axiosClient.get("/inventory/dashboard/summary/");
+  return response.data;
+};
+
+export const downloadFile = (blob: Blob, filename: string) => {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
+
+export const downloadSalesExcel = async () => {
+  const response = await axiosClient.get("/inventory/exports/sales/", {
+    responseType: "blob",
+  });
+
+  downloadFile(response.data, "bao_cao_ban_hang.xlsx");
+};
+
+export const downloadImportsExcel = async () => {
+  const response = await axiosClient.get("/inventory/exports/imports/", {
+    responseType: "blob",
+  });
+
+  downloadFile(response.data, "bao_cao_nhap_hang.xlsx");
+};
+
+export const downloadInventoryExcel = async () => {
+  const response = await axiosClient.get("/inventory/exports/inventory/", {
+    responseType: "blob",
+  });
+
+  downloadFile(response.data, "bao_cao_ton_kho.xlsx");
+};
+
+export const downloadMonthlyWord = async () => {
+  const now = new Date();
+  const month = now.getMonth() + 1;
+  const year = now.getFullYear();
+
+  const response = await axiosClient.get("/inventory/exports/monthly-word/", {
+    responseType: "blob",
+    params: {
+      month,
+      year,
+    },
+  });
+
+  downloadFile(response.data, `bao_cao_thang_${month}_${year}.docx`);
 };
