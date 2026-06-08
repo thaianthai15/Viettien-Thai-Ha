@@ -7,6 +7,12 @@ export type Category = {
   is_active: boolean;
 };
 
+export type CreateCategoryPayload = {
+  name: string;
+  description: string;
+  is_active: boolean;
+};
+
 export type ProductVariant = {
   id: number;
   product: number;
@@ -235,6 +241,26 @@ export const getCategories = async (): Promise<Category[]> => {
   }
 
   return response.data.results;
+};
+
+export const createCategory = async (
+  payload: CreateCategoryPayload
+): Promise<Category> => {
+  const response = await axiosClient.post("/inventory/categories/", payload);
+  return response.data;
+};
+
+export const updateCategory = async (
+  id: number,
+  payload: CreateCategoryPayload
+): Promise<Category> => {
+  const response = await axiosClient.put(`/inventory/categories/${id}/`, payload);
+  return response.data;
+};
+
+export const deleteCategory = async (id: number) => {
+  const response = await axiosClient.delete(`/inventory/categories/${id}/`);
+  return response.data;
 };
 
 export const getProducts = async (

@@ -10,6 +10,7 @@ type AppLayoutProps = {
 const navItems = [
   { to: "/", label: "Báo cáo tổng quan" },
   { to: "/home", label: "Trang chủ" },
+  { to: "/categories", label: "Danh mục" },
   { to: "/products", label: "Sản phẩm" },
   { to: "/imports", label: "Nhập hàng" },
   { to: "/sales", label: "Bán hàng" },

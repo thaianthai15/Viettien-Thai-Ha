@@ -12,6 +12,7 @@ import SaleInvoiceFormPage from "./pages/SaleInvoiceFormPage";
 import ProtectedRoute from "./routes/ProtectedRoute";
 import HomePage from "./pages/HomePage";
 import AiAssistantPage from "./pages/AiAssistantPage";
+import CategoryListPage from "./pages/CategoryListPage";
 
 function App() {
   return (
@@ -30,6 +31,7 @@ function App() {
           <Route path="/sales" element={<SaleInvoiceListPage />} />
           <Route path="/sales/new" element={<SaleInvoiceFormPage />} />
           <Route path="/ai" element={<AiAssistantPage />} />
+          <Route path="/categories" element={<CategoryListPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
