@@ -5,8 +5,11 @@ const axiosClient = axios.create({
 });
 
 axiosClient.interceptors.request.use((config) => {
-  // const accessToken = localStorage.getItem("accessToken");
-  const accessToken = localStorage.getItem("access");
+  const accessToken =
+    localStorage.getItem("access_token") ||
+    localStorage.getItem("accessToken") ||
+    localStorage.getItem("access") ||
+    localStorage.getItem("token");
 
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`;
@@ -14,5 +17,16 @@ axiosClient.interceptors.request.use((config) => {
 
   return config;
 });
+
+axiosClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      console.warn("Unauthorized: token missing, expired, or invalid.");
+    }
+
+    return Promise.reject(error);
+  }
+);
 
 export default axiosClient;
