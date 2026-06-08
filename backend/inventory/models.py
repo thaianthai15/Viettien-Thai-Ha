@@ -104,6 +104,10 @@ class Supplier(models.Model):
 
 
 class ImportReceipt(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = "ACTIVE", "Đang hiệu lực"
+        CANCELLED = "CANCELLED", "Đã hủy"
+
     receipt_code = models.CharField(max_length=100, unique=True)
     supplier = models.ForeignKey(
         Supplier,
@@ -112,6 +116,12 @@ class ImportReceipt(models.Model):
     )
     import_date = models.DateField(default=timezone.now)
     note = models.TextField(blank=True)
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.ACTIVE,
+    )
 
     total_amount = models.DecimalField(
         max_digits=14,
@@ -125,6 +135,15 @@ class ImportReceipt(models.Model):
         null=True,
         blank=True,
         related_name="created_import_receipts",
+    )
+
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancelled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cancelled_import_receipts",
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -233,6 +252,10 @@ class SaleInvoice(models.Model):
         CARD = "CARD", "Thẻ"
         OTHER = "OTHER", "Khác"
 
+    class Status(models.TextChoices):
+        ACTIVE = "ACTIVE", "Đang hiệu lực"
+        CANCELLED = "CANCELLED", "Đã hủy"
+
     invoice_code = models.CharField(max_length=100, unique=True)
 
     customer = models.ForeignKey(
@@ -245,6 +268,12 @@ class SaleInvoice(models.Model):
 
     sale_date = models.DateField(default=timezone.now)
     note = models.TextField(blank=True)
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.ACTIVE,
+    )
 
     total_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     discount_amount = models.DecimalField(max_digits=14, decimal_places=2, default=0)
@@ -262,6 +291,15 @@ class SaleInvoice(models.Model):
         null=True,
         blank=True,
         related_name="created_sale_invoices",
+    )
+
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancelled_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="cancelled_sale_invoices",
     )
 
     created_at = models.DateTimeField(auto_now_add=True)

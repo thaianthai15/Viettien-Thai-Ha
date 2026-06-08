@@ -1,6 +1,18 @@
 from rest_framework import serializers
 from django.db import transaction
-from .models import Category, Product, ProductVariant, Supplier, ImportReceipt, ImportReceiptItem, StockTransaction, Customer, SaleInvoice, SaleInvoiceItem
+from .models import (
+    Category,
+    Product,
+    ProductVariant,
+    Supplier,
+    ImportReceipt,
+    ImportReceiptItem,
+    StockTransaction,
+    Customer,
+    SaleInvoice,
+    SaleInvoiceItem,
+)
+
 
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
@@ -37,6 +49,11 @@ class ProductVariantSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+        read_only_fields = [
+            "current_stock",
+            "created_at",
+            "updated_at",
+        ]
 
 
 class ProductSerializer(serializers.ModelSerializer):
@@ -68,7 +85,8 @@ class ProductSerializer(serializers.ModelSerializer):
             validated_data["created_by"] = request.user
 
         return super().create(validated_data)
-    
+
+
 class SupplierSerializer(serializers.ModelSerializer):
     class Meta:
         model = Supplier
@@ -148,10 +166,19 @@ class ImportReceiptSerializer(serializers.ModelSerializer):
             "total_amount",
             "created_by",
             "items",
+            "status",
+            "cancelled_at",
+            "cancelled_by",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["total_amount", "created_by"]
+        read_only_fields = [
+            "total_amount",
+            "created_by",
+            "status",
+            "cancelled_at",
+            "cancelled_by",
+        ]
 
 
 class ImportReceiptCreateSerializer(serializers.ModelSerializer):
@@ -170,7 +197,9 @@ class ImportReceiptCreateSerializer(serializers.ModelSerializer):
 
     def validate_items(self, value):
         if not value:
-            raise serializers.ValidationError("Phiếu nhập phải có ít nhất một sản phẩm.")
+            raise serializers.ValidationError(
+                "Phiếu nhập phải có ít nhất một sản phẩm."
+            )
 
         return value
 
@@ -187,7 +216,9 @@ class ImportReceiptCreateSerializer(serializers.ModelSerializer):
         total_amount = 0
 
         for item_data in items_data:
-            product_variant = item_data["product_variant"]
+            product_variant = ProductVariant.objects.select_for_update().get(
+                id=item_data["product_variant"].id
+            )
             quantity = item_data["quantity"]
             import_price = item_data["import_price"]
             subtotal = quantity * import_price
@@ -205,7 +236,13 @@ class ImportReceiptCreateSerializer(serializers.ModelSerializer):
 
             product_variant.current_stock = after_stock
             product_variant.import_price = import_price
-            product_variant.save(update_fields=["current_stock", "import_price", "updated_at"])
+            product_variant.save(
+                update_fields=[
+                    "current_stock",
+                    "import_price",
+                    "updated_at",
+                ]
+            )
 
             StockTransaction.objects.create(
                 product_variant=product_variant,
@@ -262,6 +299,7 @@ class StockTransactionSerializer(serializers.ModelSerializer):
             "created_by",
             "created_at",
         ]
+
 
 class CustomerSerializer(serializers.ModelSerializer):
     class Meta:
@@ -341,6 +379,9 @@ class SaleInvoiceSerializer(serializers.ModelSerializer):
             "payment_method",
             "created_by",
             "items",
+            "status",
+            "cancelled_at",
+            "cancelled_by",
             "created_at",
             "updated_at",
         ]
@@ -348,6 +389,9 @@ class SaleInvoiceSerializer(serializers.ModelSerializer):
             "total_amount",
             "final_amount",
             "created_by",
+            "status",
+            "cancelled_at",
+            "cancelled_by",
         ]
 
 
@@ -371,13 +415,31 @@ class SaleInvoiceCreateSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError("Hóa đơn phải có ít nhất một sản phẩm.")
 
+        quantity_by_variant = {}
+
         for item in value:
             product_variant = item["product_variant"]
             quantity = item["quantity"]
 
-            if quantity > product_variant.current_stock:
+            quantity_by_variant[product_variant.id] = (
+                quantity_by_variant.get(product_variant.id, 0) + quantity
+            )
+
+        variants = ProductVariant.objects.filter(
+            id__in=quantity_by_variant.keys()
+        )
+
+        variant_map = {
+            variant.id: variant
+            for variant in variants
+        }
+
+        for variant_id, total_quantity in quantity_by_variant.items():
+            product_variant = variant_map[variant_id]
+
+            if total_quantity > product_variant.current_stock:
                 raise serializers.ValidationError(
-                    f"Sản phẩm {product_variant} chỉ còn {product_variant.current_stock}, không đủ để bán {quantity}."
+                    f"Sản phẩm {product_variant} chỉ còn {product_variant.current_stock}, không đủ để bán {total_quantity}."
                 )
 
         return value
@@ -396,7 +458,9 @@ class SaleInvoiceCreateSerializer(serializers.ModelSerializer):
         total_amount = 0
 
         for item_data in items_data:
-            product_variant = item_data["product_variant"]
+            product_variant = ProductVariant.objects.select_for_update().get(
+                id=item_data["product_variant"].id
+            )
             quantity = item_data["quantity"]
             sale_price = item_data["sale_price"]
             subtotal = quantity * sale_price
@@ -419,7 +483,13 @@ class SaleInvoiceCreateSerializer(serializers.ModelSerializer):
 
             product_variant.current_stock = after_stock
             product_variant.sale_price = sale_price
-            product_variant.save(update_fields=["current_stock", "sale_price", "updated_at"])
+            product_variant.save(
+                update_fields=[
+                    "current_stock",
+                    "sale_price",
+                    "updated_at",
+                ]
+            )
 
             StockTransaction.objects.create(
                 product_variant=product_variant,
@@ -433,6 +503,11 @@ class SaleInvoiceCreateSerializer(serializers.ModelSerializer):
             )
 
             total_amount += subtotal
+
+        if discount_amount > total_amount:
+            raise serializers.ValidationError(
+                "Tiền giảm giá không được lớn hơn tổng tiền hóa đơn."
+            )
 
         invoice.total_amount = total_amount
         invoice.final_amount = total_amount - discount_amount

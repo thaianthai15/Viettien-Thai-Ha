@@ -1,5 +1,5 @@
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import filters, permissions, viewsets
+from rest_framework import filters, permissions, status, viewsets
 
 from datetime import timedelta
 from io import BytesIO
@@ -7,10 +7,11 @@ from calendar import monthrange
 from .services.export_word import create_monthly_report_document
 
 from django.http import HttpResponse
+from django.db import transaction
 from django.db.models import Sum, Count, F
 from django.db.models.functions import TruncDate
 from django.utils import timezone
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 
 from .services.export_excel import (
@@ -20,7 +21,18 @@ from .services.export_excel import (
 )
 
 from .filters import ProductFilter, ProductVariantFilter
-from .models import Category, Product, ProductVariant, Supplier, ImportReceipt, StockTransaction, Customer, SaleInvoice, SaleInvoiceItem
+from .models import (
+    Category,
+    Product,
+    ProductVariant,
+    Supplier,
+    ImportReceipt,
+    ImportReceiptItem,
+    StockTransaction,
+    Customer,
+    SaleInvoice,
+    SaleInvoiceItem,
+)
 from .serializers import (
     CategorySerializer,
     ProductSerializer,
@@ -34,6 +46,7 @@ from .serializers import (
     SaleInvoiceCreateSerializer,
 )
 
+
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all().order_by("-created_at")
     serializer_class = CategorySerializer
@@ -46,8 +59,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = (
-        Product.objects
-        .select_related("category", "created_by")
+        Product.objects.select_related("category", "created_by")
         .prefetch_related("variants")
         .all()
         .distinct()
@@ -66,11 +78,9 @@ class ProductViewSet(viewsets.ModelViewSet):
 
 
 class ProductVariantViewSet(viewsets.ModelViewSet):
-    queryset = (
-        ProductVariant.objects
-        .select_related("product", "product__category")
-        .all()
-    )
+    queryset = ProductVariant.objects.select_related(
+        "product", "product__category"
+    ).all()
     serializer_class = ProductVariantSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -97,6 +107,7 @@ class ProductVariantViewSet(viewsets.ModelViewSet):
         "created_at",
     ]
 
+
 class SupplierViewSet(viewsets.ModelViewSet):
     queryset = Supplier.objects.all().order_by("name")
     serializer_class = SupplierSerializer
@@ -109,16 +120,26 @@ class SupplierViewSet(viewsets.ModelViewSet):
 
 class ImportReceiptViewSet(viewsets.ModelViewSet):
     queryset = (
-        ImportReceipt.objects
-        .select_related("supplier", "created_by")
-        .prefetch_related("items", "items__product_variant", "items__product_variant__product")
+        ImportReceipt.objects.select_related("supplier", "created_by", "cancelled_by")
+        .prefetch_related(
+            "items",
+            "items__product_variant",
+            "items__product_variant__product",
+        )
         .all()
     )
     permission_classes = [permissions.IsAuthenticated]
 
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["receipt_code", "supplier__name", "note"]
-    ordering_fields = ["id", "receipt_code", "import_date", "total_amount", "created_at"]
+    ordering_fields = [
+        "id",
+        "receipt_code",
+        "import_date",
+        "total_amount",
+        "status",
+        "created_at",
+    ]
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -126,13 +147,106 @@ class ImportReceiptViewSet(viewsets.ModelViewSet):
 
         return ImportReceiptSerializer
 
+    def update(self, request, *args, **kwargs):
+        return Response(
+            {
+                "detail": "Không được sửa trực tiếp phiếu nhập. Nếu nhập sai, hãy hủy phiếu và tạo phiếu mới."
+            },
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
+    def partial_update(self, request, *args, **kwargs):
+        return Response(
+            {
+                "detail": "Không được sửa trực tiếp phiếu nhập. Nếu nhập sai, hãy hủy phiếu và tạo phiếu mới."
+            },
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        return Response(
+            {
+                "detail": "Không được xóa phiếu nhập. Hãy dùng chức năng hủy phiếu để giữ lịch sử kho."
+            },
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
+    @action(detail=True, methods=["post"])
+    @transaction.atomic
+    def cancel(self, request, pk=None):
+        receipt = (
+            ImportReceipt.objects.select_for_update()
+            .prefetch_related("items", "items__product_variant")
+            .get(pk=pk)
+        )
+
+        if receipt.status == ImportReceipt.Status.CANCELLED:
+            return Response(
+                {"detail": "Phiếu nhập này đã bị hủy trước đó."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        for item in receipt.items.all():
+            product_variant = ProductVariant.objects.select_for_update().get(
+                id=item.product_variant_id
+            )
+
+            before_stock = product_variant.current_stock
+            after_stock = before_stock - item.quantity
+
+            if after_stock < 0:
+                return Response(
+                    {
+                        "detail": (
+                            f"Không thể hủy phiếu nhập {receipt.receipt_code} vì "
+                            f"sản phẩm {product_variant} hiện chỉ còn {before_stock}, "
+                            f"không đủ để trừ lại {item.quantity}."
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            product_variant.current_stock = after_stock
+            product_variant.save(update_fields=["current_stock", "updated_at"])
+
+            StockTransaction.objects.create(
+                product_variant=product_variant,
+                transaction_type=StockTransaction.TransactionType.ADJUSTMENT,
+                quantity=-item.quantity,
+                before_stock=before_stock,
+                after_stock=after_stock,
+                reference_code=receipt.receipt_code,
+                note=f"Hủy phiếu nhập {receipt.receipt_code}",
+                created_by=request.user,
+            )
+
+        receipt.status = ImportReceipt.Status.CANCELLED
+        receipt.cancelled_at = timezone.now()
+        receipt.cancelled_by = request.user
+        receipt.save(
+            update_fields=[
+                "status",
+                "cancelled_at",
+                "cancelled_by",
+                "updated_at",
+            ]
+        )
+
+        serializer = self.get_serializer(receipt)
+
+        return Response(
+            {
+                "detail": "Hủy phiếu nhập thành công.",
+                "data": serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
 
 class StockTransactionViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = (
-        StockTransaction.objects
-        .select_related("product_variant", "product_variant__product", "created_by")
-        .all()
-    )
+    queryset = StockTransaction.objects.select_related(
+        "product_variant", "product_variant__product", "created_by"
+    ).all()
     serializer_class = StockTransactionSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -144,6 +258,7 @@ class StockTransactionViewSet(viewsets.ReadOnlyModelViewSet):
         "note",
     ]
     ordering_fields = ["id", "created_at", "transaction_type"]
+
 
 class CustomerViewSet(viewsets.ModelViewSet):
     queryset = Customer.objects.all().order_by("-created_at")
@@ -157,8 +272,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
 
 class SaleInvoiceViewSet(viewsets.ModelViewSet):
     queryset = (
-        SaleInvoice.objects
-        .select_related("customer", "created_by")
+        SaleInvoice.objects.select_related("customer", "created_by", "cancelled_by")
         .prefetch_related(
             "items",
             "items__product_variant",
@@ -176,6 +290,7 @@ class SaleInvoiceViewSet(viewsets.ModelViewSet):
         "sale_date",
         "total_amount",
         "final_amount",
+        "status",
         "created_at",
     ]
 
@@ -184,7 +299,90 @@ class SaleInvoiceViewSet(viewsets.ModelViewSet):
             return SaleInvoiceCreateSerializer
 
         return SaleInvoiceSerializer
-    
+
+    def update(self, request, *args, **kwargs):
+        return Response(
+            {
+                "detail": "Không được sửa trực tiếp hóa đơn. Nếu bán sai, hãy hủy hóa đơn và tạo hóa đơn mới."
+            },
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
+    def partial_update(self, request, *args, **kwargs):
+        return Response(
+            {
+                "detail": "Không được sửa trực tiếp hóa đơn. Nếu bán sai, hãy hủy hóa đơn và tạo hóa đơn mới."
+            },
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        return Response(
+            {
+                "detail": "Không được xóa hóa đơn. Hãy dùng chức năng hủy hóa đơn để giữ lịch sử kho."
+            },
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
+
+    @action(detail=True, methods=["post"])
+    @transaction.atomic
+    def cancel(self, request, pk=None):
+        invoice = (
+            SaleInvoice.objects.select_for_update()
+            .prefetch_related("items", "items__product_variant")
+            .get(pk=pk)
+        )
+
+        if invoice.status == SaleInvoice.Status.CANCELLED:
+            return Response(
+                {"detail": "Hóa đơn này đã bị hủy trước đó."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        for item in invoice.items.all():
+            product_variant = ProductVariant.objects.select_for_update().get(
+                id=item.product_variant_id
+            )
+
+            before_stock = product_variant.current_stock
+            after_stock = before_stock + item.quantity
+
+            product_variant.current_stock = after_stock
+            product_variant.save(update_fields=["current_stock", "updated_at"])
+
+            StockTransaction.objects.create(
+                product_variant=product_variant,
+                transaction_type=StockTransaction.TransactionType.RETURN,
+                quantity=item.quantity,
+                before_stock=before_stock,
+                after_stock=after_stock,
+                reference_code=invoice.invoice_code,
+                note=f"Hủy hóa đơn bán hàng {invoice.invoice_code}",
+                created_by=request.user,
+            )
+
+        invoice.status = SaleInvoice.Status.CANCELLED
+        invoice.cancelled_at = timezone.now()
+        invoice.cancelled_by = request.user
+        invoice.save(
+            update_fields=[
+                "status",
+                "cancelled_at",
+                "cancelled_by",
+                "updated_at",
+            ]
+        )
+
+        serializer = self.get_serializer(invoice)
+
+        return Response(
+            {
+                "detail": "Hủy hóa đơn thành công.",
+                "data": serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
 
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
@@ -192,23 +390,25 @@ def dashboard_summary(request):
     today = timezone.localdate()
     seven_days_ago = today - timedelta(days=6)
 
-    today_invoices = SaleInvoice.objects.filter(sale_date=today)
+    today_invoices = SaleInvoice.objects.filter(
+        sale_date=today,
+        status=SaleInvoice.Status.ACTIVE,
+    )
 
-    today_revenue = today_invoices.aggregate(
-        total=Sum("final_amount")
-    )["total"] or 0
+    today_revenue = today_invoices.aggregate(total=Sum("final_amount"))["total"] or 0
 
     today_invoice_count = today_invoices.count()
 
-    today_sold_quantity = SaleInvoiceItem.objects.filter(
-        invoice__sale_date=today
-    ).aggregate(
-        total=Sum("quantity")
-    )["total"] or 0
+    today_sold_quantity = (
+        SaleInvoiceItem.objects.filter(
+            invoice__sale_date=today,
+            invoice__status=SaleInvoice.Status.ACTIVE,
+        ).aggregate(total=Sum("quantity"))["total"]
+        or 0
+    )
 
     low_stock_variants = (
-        ProductVariant.objects
-        .filter(
+        ProductVariant.objects.filter(
             current_stock__lte=F("low_stock_threshold"),
             is_active=True,
             product__is_active=True,
@@ -232,10 +432,10 @@ def dashboard_summary(request):
     ]
 
     top_products = (
-        SaleInvoiceItem.objects
-        .filter(
+        SaleInvoiceItem.objects.filter(
             invoice__sale_date__gte=seven_days_ago,
             invoice__sale_date__lte=today,
+            invoice__status=SaleInvoice.Status.ACTIVE,
         )
         .values(
             "product_variant__product__code",
@@ -259,10 +459,10 @@ def dashboard_summary(request):
     ]
 
     revenue_by_day = (
-        SaleInvoice.objects
-        .filter(
+        SaleInvoice.objects.filter(
             sale_date__gte=seven_days_ago,
             sale_date__lte=today,
+            status=SaleInvoice.Status.ACTIVE,
         )
         .values("sale_date")
         .annotate(
@@ -286,43 +486,48 @@ def dashboard_summary(request):
         day = seven_days_ago + timedelta(days=i)
         data = revenue_map.get(day, {"revenue": 0, "invoice_count": 0})
 
-        revenue_chart.append({
-            "date": day.isoformat(),
-            "revenue": data["revenue"],
-            "invoice_count": data["invoice_count"],
-        })
+        revenue_chart.append(
+            {
+                "date": day.isoformat(),
+                "revenue": data["revenue"],
+                "invoice_count": data["invoice_count"],
+            }
+        )
 
     total_products = Product.objects.count()
 
     total_variants = ProductVariant.objects.count()
 
-    total_stock = ProductVariant.objects.aggregate(
-        total=Sum("current_stock")
-    )["total"] or 0
+    total_stock = (
+        ProductVariant.objects.aggregate(total=Sum("current_stock"))["total"] or 0
+    )
 
-    return Response({
-        "today": {
-            "revenue": today_revenue,
-            "invoice_count": today_invoice_count,
-            "sold_quantity": today_sold_quantity,
-        },
-        "inventory": {
-            "total_products": total_products,
-            "total_variants": total_variants,
-            "total_stock": total_stock,
-            "low_stock_count": len(low_stock_data),
-        },
-        "low_stock_variants": low_stock_data,
-        "top_products": top_products_data,
-        "revenue_chart": revenue_chart,
-    })
+    return Response(
+        {
+            "today": {
+                "revenue": today_revenue,
+                "invoice_count": today_invoice_count,
+                "sold_quantity": today_sold_quantity,
+            },
+            "inventory": {
+                "total_products": total_products,
+                "total_variants": total_variants,
+                "total_stock": total_stock,
+                "low_stock_count": len(low_stock_data),
+            },
+            "low_stock_variants": low_stock_data,
+            "top_products": top_products_data,
+            "revenue_chart": revenue_chart,
+        }
+    )
+
 
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def export_sales_excel(request):
     invoices = (
-        SaleInvoice.objects
-        .select_related("customer")
+        SaleInvoice.objects.select_related("customer")
+        .filter(status=SaleInvoice.Status.ACTIVE)
         .prefetch_related(
             "items",
             "items__product_variant",
@@ -359,8 +564,8 @@ def export_sales_excel(request):
 @permission_classes([permissions.IsAuthenticated])
 def export_imports_excel(request):
     receipts = (
-        ImportReceipt.objects
-        .select_related("supplier")
+        ImportReceipt.objects.select_related("supplier")
+        .filter(status=ImportReceipt.Status.ACTIVE)
         .prefetch_related(
             "items",
             "items__product_variant",
@@ -396,11 +601,9 @@ def export_imports_excel(request):
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
 def export_inventory_excel(request):
-    variants = (
-        ProductVariant.objects
-        .select_related("product", "product__category")
-        .all()
-    )
+    variants = ProductVariant.objects.select_related(
+        "product", "product__category"
+    ).all()
 
     workbook = create_inventory_report_workbook(variants)
 
@@ -415,6 +618,7 @@ def export_inventory_excel(request):
     response["Content-Disposition"] = 'attachment; filename="bao_cao_ton_kho.xlsx"'
 
     return response
+
 
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated])
@@ -436,22 +640,20 @@ def export_monthly_word(request):
         sale_date__lte=last_day,
     )
 
-    total_revenue = invoices.aggregate(
-        total=Sum("final_amount")
-    )["total"] or 0
+    total_revenue = invoices.aggregate(total=Sum("final_amount"))["total"] or 0
 
     invoice_count = invoices.count()
 
-    sold_quantity = SaleInvoiceItem.objects.filter(
-        invoice__sale_date__gte=first_day,
-        invoice__sale_date__lte=last_day,
-    ).aggregate(
-        total=Sum("quantity")
-    )["total"] or 0
+    sold_quantity = (
+        SaleInvoiceItem.objects.filter(
+            invoice__sale_date__gte=first_day,
+            invoice__sale_date__lte=last_day,
+        ).aggregate(total=Sum("quantity"))["total"]
+        or 0
+    )
 
     top_products = (
-        SaleInvoiceItem.objects
-        .filter(
+        SaleInvoiceItem.objects.filter(
             invoice__sale_date__gte=first_day,
             invoice__sale_date__lte=last_day,
         )
@@ -467,8 +669,7 @@ def export_monthly_word(request):
     )
 
     low_stock_variants = (
-        ProductVariant.objects
-        .filter(
+        ProductVariant.objects.filter(
             current_stock__lte=F("low_stock_threshold"),
             is_active=True,
             product__is_active=True,

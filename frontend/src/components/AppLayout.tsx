@@ -8,7 +8,7 @@ type AppLayoutProps = {
 };
 
 const navItems = [
-  { to: "/", label: "Dashboard" },
+  { to: "/", label: "Báo cáo tổng quan" },
   { to: "/home", label: "Trang chủ" },
   { to: "/products", label: "Sản phẩm" },
   { to: "/imports", label: "Nhập hàng" },

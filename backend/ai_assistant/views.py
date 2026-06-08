@@ -1,11 +1,12 @@
 from rest_framework import permissions, status
 from rest_framework.response import Response
-from rest_framework.views import APIView
 
 from .models import AIConversation, AIMessage
 from .serializers import AIChatRequestSerializer
 from .services.rule_based_ai import generate_ai_answer
 
+from rest_framework.views import APIView
+from .services.ai_insights import get_import_suggestions, get_anomalies
 
 class AIChatView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -42,3 +43,26 @@ class AIChatView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+class AIImportSuggestionView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        suggestions = get_import_suggestions()
+
+        return Response({
+            "count": len(suggestions),
+            "suggestions": suggestions,
+        })
+
+
+class AIAnomalyView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        anomalies = get_anomalies()
+
+        return Response({
+            "count": len(anomalies),
+            "anomalies": anomalies,
+        })

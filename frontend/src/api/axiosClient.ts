@@ -1,17 +1,15 @@
 import axios from "axios";
 
 const axiosClient = axios.create({
-  baseURL: "http://127.0.0.1:8000/api",
-  headers: {
-    "Content-Type": "application/json",
-  },
+  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api",
 });
 
 axiosClient.interceptors.request.use((config) => {
-  const token = localStorage.getItem("access_token");
+  const accessToken = localStorage.getItem("accessToken");
+  // const accessToken = localStorage.getItem("access");
 
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+  if (accessToken) {
+    config.headers.Authorization = `Bearer ${accessToken}`;
   }
 
   return config;

@@ -1,6 +1,12 @@
 import { useState, useRef, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { sendAIMessage } from "../features/ai/aiApi";
+import {
+  getAIAnomalies,
+  getAIImportSuggestions,
+  sendAIMessage,
+  type AIAnomaly,
+  type AIImportSuggestion,
+} from "../features/ai/aiApi";
 
 type ChatMessage = {
   role: "USER" | "ASSISTANT";
@@ -24,9 +30,15 @@ export default function AiAssistantPage() {
         "Xin chào! Mình là AI Assistant của đại lý Việt Tiến 👋\nBạn có thể hỏi mình về doanh thu, tồn kho, hàng sắp hết, sản phẩm bán chạy hoặc gợi ý nhập hàng.",
     },
   ]);
+
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
+  const [suggestions, setSuggestions] = useState<AIImportSuggestion[]>([]);
+  const [anomalies, setAnomalies] = useState<AIAnomaly[]>([]);
+  const [isLoadingInsights, setIsLoadingInsights] = useState(true);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -34,25 +46,68 @@ export default function AiAssistantPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isSending]);
 
+  useEffect(() => {
+    const fetchInsights = async () => {
+      try {
+        setIsLoadingInsights(true);
+
+        const [suggestionData, anomalyData] = await Promise.all([
+          getAIImportSuggestions(),
+          getAIAnomalies(),
+        ]);
+
+        setSuggestions(suggestionData);
+        setAnomalies(anomalyData);
+      } catch (error: any) {
+        console.error("AI insights error:", error);
+
+        if (error.response?.status === 401) {
+          localStorage.clear();
+          window.location.href = "/login";
+          return;
+        }
+
+        setErrorMessage("Không thể tải dữ liệu gợi ý AI.");
+      } finally {
+        setIsLoadingInsights(false);
+      }
+    };
+
+    fetchInsights();
+  }, []);
+
   const handleSend = async (customMessage?: string) => {
     const message = customMessage || input;
+
     if (!message.trim()) return;
 
     try {
       setErrorMessage("");
       setIsSending(true);
+
       setMessages((prev) => [...prev, { role: "USER", content: message }]);
+
       setInput("");
-      if (textareaRef.current) textareaRef.current.style.height = "auto";
+
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+      }
 
       const data = await sendAIMessage(message);
-      setMessages((prev) => [...prev, { role: "ASSISTANT", content: data.answer }]);
+
+      setMessages((prev) => [
+        ...prev,
+        { role: "ASSISTANT", content: data.answer },
+      ]);
     } catch (error: any) {
+      console.error("AI chat error:", error);
+
       if (error.response?.status === 401) {
         localStorage.clear();
         window.location.href = "/login";
         return;
       }
+
       setErrorMessage("Không thể gửi câu hỏi tới AI Assistant.");
     } finally {
       setIsSending(false);
@@ -68,9 +123,22 @@ export default function AiAssistantPage() {
 
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
-    const ta = e.target;
-    ta.style.height = "auto";
-    ta.style.height = Math.min(ta.scrollHeight, 120) + "px";
+
+    const textarea = e.target;
+    textarea.style.height = "auto";
+    textarea.style.height = Math.min(textarea.scrollHeight, 120) + "px";
+  };
+
+  const getAnomalyCardClass = (level: AIAnomaly["level"]) => {
+    if (level === "HIGH") return "insight-item anomaly-high";
+    if (level === "MEDIUM") return "insight-item anomaly-medium";
+    return "insight-item anomaly-info";
+  };
+
+  const getAnomalyBadgeClass = (level: AIAnomaly["level"]) => {
+    if (level === "HIGH") return "anomaly-badge badge-high";
+    if (level === "MEDIUM") return "anomaly-badge badge-medium";
+    return "anomaly-badge badge-info";
   };
 
   return (
@@ -90,7 +158,6 @@ export default function AiAssistantPage() {
           padding: 24px 16px 32px;
         }
 
-        /* Header */
         .ai-header {
           width: 100%;
           max-width: 780px;
@@ -152,13 +219,155 @@ export default function AiAssistantPage() {
           transition: all 0.15s;
           white-space: nowrap;
         }
+
         .back-btn:hover {
           border-color: #94a3b8;
           background: #f8fafc;
           color: #1e293b;
         }
 
-        /* Chat card */
+        .insights-grid {
+          width: 100%;
+          max-width: 780px;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 14px;
+          margin-bottom: 16px;
+        }
+
+        .insight-card {
+          background: white;
+          border-radius: 20px;
+          padding: 16px;
+          border: 1px solid rgba(226,232,240,0.9);
+          box-shadow:
+            0 1px 3px rgba(0,0,0,0.04),
+            0 8px 24px rgba(15,23,42,0.06);
+        }
+
+        .insight-head {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 12px;
+        }
+
+        .insight-title {
+          font-size: 14px;
+          font-weight: 800;
+          color: #0f172a;
+        }
+
+        .insight-desc {
+          font-size: 12px;
+          color: #64748b;
+          margin-top: 3px;
+          line-height: 1.45;
+        }
+
+        .insight-count {
+          min-width: 30px;
+          height: 26px;
+          padding: 0 9px;
+          border-radius: 999px;
+          background: #eef2ff;
+          color: #4f46e5;
+          font-size: 12px;
+          font-weight: 800;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .insight-list {
+          display: flex;
+          flex-direction: column;
+          gap: 9px;
+        }
+
+        .insight-item {
+          border-radius: 14px;
+          padding: 11px 12px;
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+        }
+
+        .insight-item-title {
+          font-size: 13px;
+          font-weight: 700;
+          color: #1e293b;
+          line-height: 1.4;
+        }
+
+        .insight-item-text {
+          margin-top: 4px;
+          font-size: 12.5px;
+          color: #64748b;
+          line-height: 1.55;
+        }
+
+        .insight-empty {
+          font-size: 12.5px;
+          color: #64748b;
+          padding: 10px 0 2px;
+        }
+
+        .stock-danger {
+          color: #dc2626;
+          font-weight: 800;
+        }
+
+        .stock-strong {
+          color: #0f172a;
+          font-weight: 800;
+        }
+
+        .anomaly-high {
+          background: #fef2f2;
+          border-color: #fecaca;
+        }
+
+        .anomaly-medium {
+          background: #fffbeb;
+          border-color: #fde68a;
+        }
+
+        .anomaly-info {
+          background: #eff6ff;
+          border-color: #bfdbfe;
+        }
+
+        .anomaly-title-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+        }
+
+        .anomaly-badge {
+          flex-shrink: 0;
+          border-radius: 999px;
+          padding: 3px 8px;
+          font-size: 10.5px;
+          font-weight: 800;
+        }
+
+        .badge-high {
+          background: #fee2e2;
+          color: #b91c1c;
+        }
+
+        .badge-medium {
+          background: #fef3c7;
+          color: #b45309;
+        }
+
+        .badge-info {
+          background: #dbeafe;
+          color: #1d4ed8;
+        }
+
         .chat-card {
           width: 100%;
           max-width: 780px;
@@ -174,7 +383,6 @@ export default function AiAssistantPage() {
           flex: 1;
         }
 
-        /* Chat topbar */
         .chat-topbar {
           display: flex;
           align-items: center;
@@ -192,6 +400,7 @@ export default function AiAssistantPage() {
           box-shadow: 0 0 0 3px rgba(34,197,94,0.18);
           animation: pulse 2s infinite;
         }
+
         @keyframes pulse {
           0%, 100% { box-shadow: 0 0 0 3px rgba(34,197,94,0.18); }
           50% { box-shadow: 0 0 0 5px rgba(34,197,94,0.08); }
@@ -213,7 +422,6 @@ export default function AiAssistantPage() {
           border-radius: 20px;
         }
 
-        /* Messages area */
         .messages-area {
           flex: 1;
           min-height: 380px;
@@ -231,11 +439,11 @@ export default function AiAssistantPage() {
         .messages-area::-webkit-scrollbar-track { background: transparent; }
         .messages-area::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
 
-        /* Message bubbles */
         .msg-row {
           display: flex;
           animation: msgIn 0.22s ease-out both;
         }
+
         @keyframes msgIn {
           from { opacity: 0; transform: translateY(6px); }
           to { opacity: 1; transform: translateY(0); }
@@ -249,6 +457,7 @@ export default function AiAssistantPage() {
           flex-direction: column;
           max-width: 72%;
         }
+
         .msg-row.user .msg-bubble-wrap { align-items: flex-end; }
         .msg-row.assistant .msg-bubble-wrap { align-items: flex-start; }
 
@@ -276,7 +485,6 @@ export default function AiAssistantPage() {
           box-shadow: 0 2px 8px rgba(15,23,42,0.06);
         }
 
-        /* Typing indicator */
         .typing-row {
           display: flex;
           align-items: flex-start;
@@ -302,6 +510,7 @@ export default function AiAssistantPage() {
           background: #94a3b8;
           animation: typingBounce 1.2s infinite;
         }
+
         .typing-dot:nth-child(2) { animation-delay: 0.2s; }
         .typing-dot:nth-child(3) { animation-delay: 0.4s; }
 
@@ -310,7 +519,6 @@ export default function AiAssistantPage() {
           30% { transform: translateY(-5px); background: #6366f1; }
         }
 
-        /* Bottom input area */
         .input-area {
           padding: 16px 20px 20px;
           border-top: 1px solid #f1f5f9;
@@ -331,7 +539,6 @@ export default function AiAssistantPage() {
           margin-bottom: 12px;
         }
 
-        /* Suggestions */
         .suggestions {
           display: flex;
           gap: 7px;
@@ -352,6 +559,7 @@ export default function AiAssistantPage() {
           transition: all 0.15s;
           white-space: nowrap;
         }
+
         .suggestion-chip:hover {
           background: #eff6ff;
           border-color: #bfdbfe;
@@ -359,7 +567,6 @@ export default function AiAssistantPage() {
           transform: translateY(-1px);
         }
 
-        /* Input row */
         .input-row {
           display: flex;
           gap: 10px;
@@ -428,6 +635,12 @@ export default function AiAssistantPage() {
         .send-btn svg { transition: transform 0.15s; }
         .send-btn:hover:not(:disabled) svg { transform: translateX(1px) translateY(-1px); }
 
+        @media (max-width: 780px) {
+          .insights-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+
         @media (max-width: 600px) {
           .ai-header { flex-wrap: wrap; }
           .ai-title { font-size: 17px; }
@@ -437,71 +650,178 @@ export default function AiAssistantPage() {
       `}</style>
 
       <div className="ai-page">
-        {/* Header */}
         <div className="ai-header">
           <div className="ai-header-left">
             <div className="ai-avatar">🤖</div>
+
             <div>
               <div className="ai-title">AI Assistant</div>
-              <div className="ai-subtitle">Hỏi về doanh thu, tồn kho, nhập hàng và bán hàng</div>
+
+              <div className="ai-subtitle">
+                Hỏi về doanh thu, tồn kho, nhập hàng và bán hàng
+              </div>
             </div>
           </div>
+
           <Link to="/" className="back-btn">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M19 12H5M12 5l-7 7 7 7"/>
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M19 12H5M12 5l-7 7 7 7" />
             </svg>
             Về Dashboard
           </Link>
         </div>
 
-        {/* Card */}
-        <div className="chat-card">
-          {/* Topbar */}
-          <div className="chat-topbar">
-            <div className="status-dot" />
-            <span className="topbar-label">Trợ lý dữ liệu đại lý Việt Tiến</span>
-            <span className="topbar-badge">Rule-based · Beta</span>
-          </div>
-
-          {/* Messages */}
-          <div className="messages-area">
-            {messages.map((msg, i) => (
-              <div key={i} className={`msg-row ${msg.role === "USER" ? "user" : "assistant"}`}>
-                <div className="msg-bubble-wrap">
-                  <div className={`msg-bubble ${msg.role === "USER" ? "user" : "assistant"}`}>
-                    {msg.content}
-                  </div>
+        <div className="insights-grid">
+          <div className="insight-card">
+            <div className="insight-head">
+              <div>
+                <div className="insight-title">Gợi ý nhập hàng</div>
+                <div className="insight-desc">
+                  Các mặt hàng nên nhập thêm dựa trên tồn kho thấp.
                 </div>
               </div>
-            ))}
+
+              <div className="insight-count">{suggestions.length}</div>
+            </div>
+
+            <div className="insight-list">
+              {isLoadingInsights && (
+                <div className="insight-empty">Đang tải gợi ý...</div>
+              )}
+
+              {!isLoadingInsights &&
+                suggestions.slice(0, 3).map((item) => (
+                  <div key={item.product_variant_id} className="insight-item">
+                    <div className="insight-item-title">
+                      {item.product_code} - {item.product_name}
+                    </div>
+
+                    <div className="insight-item-text">
+                      Size {item.size}, màu {item.color}. Còn{" "}
+                      <span className="stock-danger">{item.current_stock}</span>,
+                      nên nhập khoảng{" "}
+                      <span className="stock-strong">
+                        {item.suggested_quantity}
+                      </span>{" "}
+                      sản phẩm.
+                    </div>
+                  </div>
+                ))}
+
+              {!isLoadingInsights && suggestions.length === 0 && (
+                <div className="insight-empty">
+                  Chưa có mặt hàng nào cần nhập gấp.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="insight-card">
+            <div className="insight-head">
+              <div>
+                <div className="insight-title">Cảnh báo bất thường</div>
+                <div className="insight-desc">
+                  Các vấn đề được phát hiện từ dữ liệu bán hàng và tồn kho.
+                </div>
+              </div>
+
+              <div className="insight-count">{anomalies.length}</div>
+            </div>
+
+            <div className="insight-list">
+              {isLoadingInsights && (
+                <div className="insight-empty">Đang kiểm tra dữ liệu...</div>
+              )}
+
+              {!isLoadingInsights &&
+                anomalies.slice(0, 3).map((item, index) => (
+                  <div
+                    key={`${item.type}-${index}`}
+                    className={getAnomalyCardClass(item.level)}
+                  >
+                    <div className="anomaly-title-row">
+                      <div className="insight-item-title">{item.title}</div>
+                      <span className={getAnomalyBadgeClass(item.level)}>
+                        {item.level}
+                      </span>
+                    </div>
+
+                    <div className="insight-item-text">{item.message}</div>
+                  </div>
+                ))}
+
+              {!isLoadingInsights && anomalies.length === 0 && (
+                <div className="insight-empty">Chưa phát hiện bất thường.</div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="chat-card">
+          <div className="chat-topbar">
+            <span className="status-dot" />
+            <span className="topbar-label">AI đang sẵn sàng hỗ trợ</span>
+            <span className="topbar-badge">Rule-based AI</span>
+          </div>
+
+          <div className="messages-area">
+            {messages.map((message, index) => {
+              const isUser = message.role === "USER";
+
+              return (
+                <div
+                  key={`${message.role}-${index}`}
+                  className={`msg-row ${isUser ? "user" : "assistant"}`}
+                >
+                  <div className="msg-bubble-wrap">
+                    <div className={`msg-bubble ${isUser ? "user" : "assistant"}`}>
+                      {message.content}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
 
             {isSending && (
               <div className="typing-row">
                 <div className="typing-bubble">
-                  <div className="typing-dot" />
-                  <div className="typing-dot" />
-                  <div className="typing-dot" />
+                  <span className="typing-dot" />
+                  <span className="typing-dot" />
+                  <span className="typing-dot" />
                 </div>
               </div>
             )}
+
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input */}
           <div className="input-area">
             {errorMessage && (
               <div className="error-banner">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
+                <span>⚠️</span>
                 {errorMessage}
               </div>
             )}
 
             <div className="suggestions">
-              {suggestedQuestions.map((q) => (
-                <button key={q} className="suggestion-chip" onClick={() => handleSend(q)}>
-                  {q}
+              {suggestedQuestions.map((question) => (
+                <button
+                  key={question}
+                  type="button"
+                  className="suggestion-chip"
+                  onClick={() => handleSend(question)}
+                  disabled={isSending}
+                >
+                  {question}
                 </button>
               ))}
             </div>
@@ -520,14 +840,24 @@ export default function AiAssistantPage() {
               </div>
 
               <button
+                type="button"
                 className="send-btn"
                 onClick={() => handleSend()}
                 disabled={isSending || !input.trim()}
-                aria-label="Gửi"
+                aria-label="Gửi câu hỏi"
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="22" y1="2" x2="11" y2="13"/>
-                  <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                <svg
+                  width="21"
+                  height="21"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke={isSending || !input.trim() ? "#94a3b8" : "white"}
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M22 2L11 13" />
+                  <path d="M22 2L15 22L11 13L2 9L22 2Z" />
                 </svg>
               </button>
             </div>

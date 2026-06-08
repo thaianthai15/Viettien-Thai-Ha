@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { alpha, Button } from "@mui/material";
 import SmartToyOutlinedIcon from "@mui/icons-material/SmartToyOutlined";
 
 import AppLayout from "../components/AppLayout";
@@ -45,19 +44,19 @@ export default function DashboardPage() {
       subtitle="Tổng quan doanh thu, tồn kho và sản phẩm bán chạy."
       action={
         <div className="flex flex-wrap gap-2">
-          <ExportButton label="Sales Excel" onClick={downloadSalesExcel} />
-          <ExportButton label="Imports Excel" onClick={downloadImportsExcel} />
+          <ExportButton label="Xuất báo cáo doanh số" onClick={downloadSalesExcel} />
+          <ExportButton label="Xuất báo cáo nhập" onClick={downloadImportsExcel} />
           <ExportButton
-            label="Inventory Excel"
+            label="Xuất báo cáo tồn kho"
             onClick={downloadInventoryExcel}
           />
-          <ExportButton label="Monthly Word" onClick={downloadMonthlyWord} />
+          <ExportButton label="Xuất báo cáo tháng" onClick={downloadMonthlyWord} />
           <Link
             to="/ai"
             className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700"
           >
             <SmartToyOutlinedIcon fontSize="small" />
-            AI Assistant
+            Trợ lý ảo
           </Link>
         </div>
       }
